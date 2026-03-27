@@ -5,6 +5,7 @@ These tests use the sample_repo fixture directory so they don't require
 a real repo or API calls.
 """
 
+import shutil
 from pathlib import Path
 
 import pytest
@@ -18,9 +19,16 @@ from src.tools.code_search import (
     _to_snake,
 )
 
+# Mark classes that call ripgrep so they skip cleanly when rg is not installed
+needs_rg = pytest.mark.skipif(
+    not shutil.which("rg"),
+    reason="ripgrep (rg) not installed — install from https://github.com/BurntSushi/ripgrep",
+)
+
 FIXTURE_REPO = Path(__file__).parent / "fixtures" / "sample_repo"
 
 
+@needs_rg
 class TestSearchTerm:
     def test_finds_class_name(self):
         results = search_term("CircuitBreaker", repo_path=FIXTURE_REPO)
@@ -48,6 +56,7 @@ class TestSearchTerm:
         assert len(results) > 0
 
 
+@needs_rg
 class TestFindTests:
     def test_finds_test_file(self):
         results = find_tests("circuit breaker", repo_path=FIXTURE_REPO)

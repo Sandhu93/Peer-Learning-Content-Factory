@@ -22,6 +22,21 @@ _SOURCE_GLOB = (
     "*.c,*.cpp,*.h,*.cs,*.md,*.yaml,*.yml,*.toml,*.json,*.sql"
 )
 
+
+def _glob_args(glob_str: str) -> list[str]:
+    """
+    Convert a comma-separated glob string into a flat list of --glob flags.
+
+    ripgrep requires one --glob flag per pattern:
+        _glob_args("*.py,*.ts") → ["--glob", "*.py", "--glob", "*.ts"]
+    """
+    args: list[str] = []
+    for pat in glob_str.split(","):
+        pat = pat.strip()
+        if pat:
+            args.extend(["--glob", pat])
+    return args
+
 # Maximum number of matches returned per search to avoid overwhelming context
 _MAX_MATCHES = 30
 
@@ -73,10 +88,7 @@ def search_term(
     }
     """
     repo = _resolve_repo(repo_path)
-    args = [
-        "--context", "3",
-        "--glob", file_glob or _SOURCE_GLOB,
-    ]
+    args = ["--context", "3", *_glob_args(file_glob or _SOURCE_GLOB)]
     if case_insensitive:
         args.append("--ignore-case")
     args += [term, str(repo)]
@@ -96,7 +108,7 @@ def search_pattern(
     repo = _resolve_repo(repo_path)
     args = [
         "--context", "3",
-        "--glob", file_glob or _SOURCE_GLOB,
+        *_glob_args(file_glob or _SOURCE_GLOB),
         pattern,
         str(repo),
     ]
@@ -123,7 +135,7 @@ def find_tests(
 
     for pat in patterns:
         raw = _rg(
-            "--glob", "test_*.py,*_test.py,*.test.ts,*.test.js,*.spec.ts,*.spec.js",
+            *_glob_args("test_*.py,*_test.py,*.test.ts,*.test.js,*.spec.ts,*.spec.js"),
             "--context", "2",
             pat,
             str(repo),
@@ -166,23 +178,49 @@ def list_files(
 ) -> list[str]:
     """
     List files matching a glob pattern, relative to repo_path.
+    Uses ripgrep when available; falls back to Path.rglob otherwise.
     """
     repo = _resolve_repo(repo_path)
-    cmd = ["rg", "--files", "--glob", file_glob, str(repo)]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        return []
 
-    files = [
-        str(Path(p).relative_to(repo))
-        for p in result.stdout.splitlines()
-        if p.strip()
-    ]
-    return files[:max_files]
+    # Try ripgrep first (faster on large repos)
+    if _rg_available():
+        cmd = ["rg", "--files", "--glob", file_glob, str(repo)]
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            files = [
+                str(Path(p).relative_to(repo))
+                for p in result.stdout.splitlines()
+                if p.strip()
+            ]
+            return files[:max_files]
+        except subprocess.TimeoutExpired:
+            pass  # fall through to Python fallback
+
+    # Pure-Python fallback — works without ripgrep installed
+    _SKIP_DIRS = {".git", "__pycache__", ".venv", "venv", "node_modules"}
+    found: list[str] = []
+    for pat in file_glob.split(","):
+        pat = pat.strip()
+        for p in repo.rglob(pat):
+            if any(s in p.parts for s in _SKIP_DIRS):
+                continue
+            if p.is_file():
+                found.append(str(p.relative_to(repo)))
+            if len(found) >= max_files:
+                break
+        if len(found) >= max_files:
+            break
+
+    return found[:max_files]
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
+
+
+def _rg_available() -> bool:
+    """Return True if ripgrep is installed and on PATH."""
+    import shutil
+    return shutil.which("rg") is not None
 
 
 def _resolve_repo(repo_path: Path | None) -> Path:

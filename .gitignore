@@ -27,10 +27,15 @@ env/
 *.swp
 *.swo
 .DS_Store
+.claude/
 
 # Project outputs (generated content — keep the directory structure)
 output/teaching_guides/*/
 !output/teaching_guides/.gitkeep
+
+# Test logs — keep the directory, ignore log files
+logs/*.log
+!logs/.gitkeep
 
 # LangGraph / LangChain cache
 .langchain.db
@@ -49,5 +54,7 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# md files
+# Personal files — not tracked in version control
+# new_concepts.md is a personal learning journal, not project documentation
+new_concepts.md
 peer_learning_concepts.md
