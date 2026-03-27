@@ -200,6 +200,70 @@ pytest tests/test_markdown_parser.py
 
 ---
 
+## BUG-007 — Parallel branches spread `**state`, causing `InvalidUpdateError` at LangGraph fan-in
+
+**Date:** 2026-03-27
+**Severity:** High — crashed every end-to-end run at the code_researcher/doc_analyzer fan-in
+**Phase:** Phase 2 — first real end-to-end run
+
+### What broke
+Both `code_researcher` and `doc_analyzer` returned `{**state, "their_key": value}`. When LangGraph's fan-in merge received results from both parallel branches in the same step, it saw two writes to every shared state key (`concept_name`, `category`, etc.). Because LangGraph `LastValue` channels only accept one write per step, it raised:
+```
+langgraph.errors.InvalidUpdateError: At key 'concept_name': Can receive only one value per step.
+Use an Annotated key to handle multiple values.
+```
+
+### How we identified it
+First live end-to-end run after BUG-006 was fixed.
+
+### What it affected
+Pipeline always crashed at the parallel fan-in; no output was ever produced.
+
+### Fix
+Both parallel branch agents now return **only the keys they produce**:
+- `code_researcher` returns `{"code_evidence": ..., "implementation_notes": ...}`
+- `doc_analyzer` returns `{"doc_context": ...}`
+
+Sequential nodes (topic_parser, concept_mapper, pedagogy_planner, writer) are unaffected — they can still spread `**state` since they run alone in their step.
+
+### Confirmation
+Re-ran end-to-end; fan-in merge succeeded, pipeline continued to concept_mapper.
+
+---
+
+## BUG-006 — `subprocess.run(text=True)` used system cp1252 encoding on Windows; binary files crashed ripgrep reader thread
+
+**Date:** 2026-03-27
+**Severity:** High — crashed `code_researcher` on any repo containing binary files or non-ASCII paths
+**Phase:** Phase 2 — first real end-to-end run
+
+### What broke
+`_rg()` in `src/tools/code_search.py` called `subprocess.run(cmd, capture_output=True, text=True)`. On Windows, `text=True` decodes subprocess stdout using the system locale encoding (cp1252). When ripgrep scanned binary files in the target repo it emitted bytes outside the cp1252 range (e.g. `0x90`), crashing the background reader thread with:
+```
+UnicodeDecodeError: 'charmap' codec can't decode byte 0x90 in position 2458
+```
+The crashed thread left `result.stdout = None`, causing the downstream `result.stdout.splitlines()` call to raise:
+```
+AttributeError: 'NoneType' object has no attribute 'splitlines'
+```
+
+### How we identified it
+First live end-to-end run against a real repo (`nl2sql_agent`) that contained binary files.
+
+### What it affected
+`code_researcher` crashed immediately after its first ripgrep search; the entire pipeline aborted.
+
+### Fix
+Two-part change in `_rg()`:
+1. Replaced `text=True` with `encoding="utf-8", errors="replace"` — forces UTF-8 decoding and silently replaces undecodable bytes rather than raising.
+2. Changed `result.stdout.splitlines()` to `(result.stdout or "").splitlines()` — defensive guard so a `None` stdout returns an empty list.
+3. Added `if result.returncode == 2: logger.warning(...)` — surfaces rg errors (exit 2) without crashing.
+
+### Confirmation
+Re-ran against the same repo; no UnicodeDecodeError, no AttributeError. `code_researcher` completed normally.
+
+---
+
 ## BUG-005 — `REPO_PATH` defaulted to the wrong directory; startup crash when path was invalid
 
 **Date:** 2026-03-27

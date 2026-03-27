@@ -48,7 +48,11 @@ def _rg(*args: str) -> list[dict]:
     """
     cmd = ["rg", "--json", *args]
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        result = subprocess.run(
+            cmd, capture_output=True,
+            encoding="utf-8", errors="replace",
+            timeout=30,
+        )
     except FileNotFoundError:
         raise RuntimeError(
             "ripgrep (rg) not found on PATH. Install it: https://github.com/BurntSushi/ripgrep"
@@ -57,8 +61,12 @@ def _rg(*args: str) -> list[dict]:
         logger.warning("ripgrep timed out for: %s", " ".join(args))
         return []
 
+    # rg exits 0 (matches found), 1 (no matches), or 2 (error)
+    if result.returncode == 2:
+        logger.warning("ripgrep error (rc=2) for args %s: %s", args, result.stderr)
+
     matches = []
-    for line in result.stdout.splitlines():
+    for line in (result.stdout or "").splitlines():
         try:
             obj = json.loads(line)
         except json.JSONDecodeError:

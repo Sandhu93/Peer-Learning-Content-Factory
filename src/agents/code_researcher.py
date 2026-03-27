@@ -111,15 +111,20 @@ Produce the structured code evidence JSON as specified.
         logger.error("code_researcher: JSON parse failed: %s", exc)
         parsed = {"code_evidence": [], "implementation_summary": "", "gaps": []}
 
-    # Store implementation_summary in doc_context (will be merged by doc_analyzer)
-    doc_context = state.get("doc_context", {})
-    doc_context["implementation_summary"] = parsed.get("implementation_summary", "")
-    doc_context["evidence_gaps"] = parsed.get("gaps", [])
+    # Store code-research metadata in implementation_notes (separate from doc_context)
+    # doc_context is exclusively written by doc_analyzer to avoid parallel write conflicts
+    implementation_notes = {
+        "implementation_summary": parsed.get("implementation_summary", ""),
+        "evidence_gaps": parsed.get("gaps", []),
+    }
 
+    # Return ONLY the keys this branch writes — do NOT spread **state.
+    # Parallel branches (code_researcher ‖ doc_analyzer) must return disjoint
+    # key sets; spreading **state causes LangGraph's fan-in merge to see two
+    # writes to concept_name / category / etc. and raise InvalidUpdateError.
     return {
-        **state,
         "code_evidence": parsed.get("code_evidence", []),
-        "doc_context": doc_context,
+        "implementation_notes": implementation_notes,
     }
 
 

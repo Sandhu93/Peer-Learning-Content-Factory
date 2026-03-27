@@ -3,7 +3,7 @@
 This document describes the structure, data flow, and component responsibilities of the Peer Learning Content Factory. It is updated whenever the system design changes in a meaningful way.
 
 **Last updated:** 2026-03-27
-**Current phase:** Phase 1 complete — research pipeline (topic_parser + code_researcher)
+**Current phase:** Phase 2 complete — full pipeline produces guide.html per concept
 
 ---
 
@@ -80,9 +80,10 @@ PipelineState
 │   └── repo_path: str                   # resolved once; travels with run
 │
 ├── Research outputs (set by Phase 1/2 agents)
-│   ├── code_evidence: list[CodeSnippet] # matched code from repo
-│   ├── doc_context: dict                # narrative from docs/README/bugs
-│   └── generalized_pattern: dict       # abstracted SE pattern
+│   ├── code_evidence: list[CodeSnippet] # matched code from repo (code_researcher)
+│   ├── implementation_notes: dict       # {implementation_summary, evidence_gaps} (code_researcher)
+│   ├── doc_context: dict                # {feature_rationale, bug_stories[], tradeoffs[], evolution_notes} (doc_analyzer)
+│   └── generalized_pattern: dict       # abstracted SE pattern (concept_mapper)
 │
 ├── Planning (set by pedagogy_planner)
 │   ├── teaching_plan: dict              # structure, difficulty, sections
@@ -111,24 +112,30 @@ Sub-models (`CodeSnippet`, `BugStory`, `DiagramSpec`) are Pydantic `BaseModel` c
 
 ## Agent Responsibilities
 
-### Phase 1 — Research
+### Phase 1 — Research (complete)
 
 | Agent | Model | Temp | Input | Output |
 |---|---|---|---|---|
 | `topic_parser` | Claude Sonnet | 0.0 | concept name, category, anchors | enriched fact sheet (difficulty, prereqs, search strategy) |
-| `code_researcher` | Claude Sonnet | 0.0 | search strategy, repo | `code_evidence[]`, implementation summary |
-| `doc_analyzer` | Claude Sonnet | 0.0 | README, bugs.md, arch docs | `doc_context` (rationale, bug stories, tradeoffs) |
-| `concept_mapper` | GPT-4o | 0.3 | code evidence + doc context | `generalized_pattern` (portable SE pattern) |
+| `code_researcher` | Claude Sonnet | 0.0 | search strategy, repo | `code_evidence[]`, `implementation_notes` |
 
-### Phase 2 — Planning + Writing
+### Phase 2 — Core Pipeline (complete)
 
 | Agent | Model | Temp | Input | Output |
 |---|---|---|---|---|
-| `pedagogy_planner` | Claude Sonnet | 0.2 | full fact sheet | `teaching_plan`, `diagram_specs` |
-| `writer` | Claude Opus/Sonnet | 0.3 | teaching plan + all evidence + HTML template | `guide_html` |
-| `linkedin_writer` | Claude Sonnet | 0.5 | fact sheet + guide | `linkedin_post` |
-| `reel_writer` | GPT-4o | 0.5 | fact sheet | `reel_script` |
-| `diagram_generator` | Claude Sonnet | 0.0 | `DiagramSpec[]` | `diagram_svgs[]` |
+| `doc_analyzer` | Claude Sonnet | 0.0 | README, bugs.md, arch docs from repo | `doc_context` (rationale, bug stories, tradeoffs) |
+| `concept_mapper` | GPT-4o → Claude fallback | 0.3 | code evidence + doc context | `generalized_pattern` (portable SE pattern) |
+| `pedagogy_planner` | Claude Sonnet | 0.2 | full fact sheet + generalized pattern | enriched `teaching_plan`, `diagram_specs` |
+| `writer` | Claude Sonnet | 0.3 | all research + teaching plan + HTML template | `guide_html`, `linkedin_post`, `reel_script`, `diagram_svgs` |
+
+Note: `doc_analyzer` and `code_researcher` run in **parallel** (fan-out from `topic_parser`). `concept_mapper` is the fan-in point that waits for both.
+
+### Phase 3 — Quality Gate (pending)
+
+| Agent | Model | Temp | Input | Output |
+|---|---|---|---|---|
+| `tech_reviewer` | Claude Sonnet | 0.0 | guide HTML + codebase access | `review_result` (is_accurate, corrections) |
+| `editor` | Claude Sonnet | 0.2 | reviewed guide HTML | `editor_result`, polished HTML |
 
 ### Phase 3 — Quality Gate
 
@@ -210,15 +217,14 @@ All SVG diagrams reference these via `fill="var(--color-success)"`. A single CSS
 ```
 output/teaching_guides/
 └── circuit-breaker-for-provider-failure/    ← slug from concept_name
-    ├── fact_sheet.json                      ← Phase 1 output (research evidence)
-    ├── guide.html                           ← Phase 2 output (full teaching guide)
-    ├── linkedin.md                          ← Phase 3 output
-    ├── reel_script.md                       ← Phase 3 output
-    ├── metadata.json                        ← Phase 5 output
-    └── diagrams/
-        ├── state_machine.svg
-        └── architecture.svg
+    ├── fact_sheet.json                      ← Phase 1+2 output (research evidence + plan)
+    ├── guide.html                           ← Phase 2 output (full self-contained teaching guide)
+    ├── linkedin.md                          ← Phase 2 output (ready-to-post LinkedIn text)
+    ├── reel_script.md                       ← Phase 2 output (scene-by-scene 60-second script)
+    └── metadata.json                        ← Phase 5 output (index, cost, quality scores)
 ```
+
+SVG diagrams are generated inline within `guide.html` (not separate files). They reference CSS custom properties so dark/light mode toggles automatically.
 
 State is persisted to `fact_sheet.json` after Phase 1 completes. If the pipeline is interrupted after Phase 1, `--resume` reads this file and continues from Phase 2 rather than restarting research.
 
@@ -253,9 +259,9 @@ This design means two concurrent API requests can target different repos without
 | Phase | Nodes added | Deliverable |
 |---|---|---|
 | **1 — Foundation** ✅ | `topic_parser`, `code_researcher` | `fact_sheet.json` per concept |
-| **2 — Core pipeline** | `doc_analyzer`, `concept_mapper`, `pedagogy_planner`, `writer` | `guide.html` per concept |
-| **3 — Content variants** | `linkedin_writer`, `reel_writer`, `diagram_generator` | Full content bundle |
-| **4 — Quality gate** | `tech_reviewer`, `editor`, human-in-the-loop | Reviewed, edited guides |
+| **2 — Core pipeline** ✅ | `doc_analyzer`, `concept_mapper`, `pedagogy_planner`, `writer` | `guide.html`, `linkedin.md`, `reel_script.md` per concept |
+| **3 — Quality gate** | `tech_reviewer`, `editor`, human-in-the-loop | Reviewed, edited guides with accuracy guarantee |
+| **4 — Content variants** | Dedicated `linkedin_writer`, `reel_writer`, `diagram_generator` | Higher-quality standalone variants |
 | **5 — Scale** | Batch processor, index builder, cost tracker | All 80+ concepts, index.html |
 
 Each phase adds nodes to `src/graph.py` without changing the nodes from previous phases.

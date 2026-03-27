@@ -195,3 +195,45 @@ The resolved path is placed in `PipelineState["repo_path"]` as a `str` at the st
 - **Positive:** The pattern generalises cleanly to any per-run input (language filter, output dir override, etc.).
 - **Negative:** Agents must remember to read from `state["repo_path"]` rather than `settings.repo_path`. A new agent that forgets this will silently use the wrong path if `REPO_PATH` is not set. Mitigated by the fallback `state.get("repo_path") or settings.repo_path` guard in `code_researcher`.
 - **Watch:** When the frontend is added, validate `repo_path` from the request body the same way as `--repo` — through `effective_repo_path()` — before passing it to the graph. Do not bypass the validation step.
+
+---
+
+## ADR-008 — `doc_context` and `implementation_notes` are separate state fields for parallel safety
+
+**Date:** 2026-03-27
+**Status:** Accepted
+
+### Context
+Phase 2 added `doc_analyzer` running in parallel with `code_researcher`. Both agents need to contribute different types of context to later nodes. The original design had `code_researcher` writing `implementation_summary` and `evidence_gaps` into `doc_context`. This was fine in Phase 1 (sequential). In Phase 2, if both parallel branches write to the same `doc_context` key, LangGraph's state merge applies one branch's update on top of the other — the second branch to complete silently overwrites the first's contribution.
+
+### Decision
+Split the two agents' outputs into distinct top-level state keys:
+- `code_researcher` → writes `code_evidence` + `implementation_notes` (`{implementation_summary, evidence_gaps}`)
+- `doc_analyzer` → writes `doc_context` (`{feature_rationale, bug_stories[], tradeoffs[], evolution_notes}`)
+
+No key is touched by both parallel branches. `concept_mapper` reads from both after the fan-in.
+
+### Consequences
+- **Positive:** No parallel write conflicts. State merge is safe and deterministic.
+- **Positive:** Each field's ownership is explicit — `implementation_notes` always comes from code analysis, `doc_context` always comes from human-written documentation.
+- **Negative:** Downstream agents must read from two separate keys (`implementation_notes` and `doc_context`) instead of one.
+- **Watch:** If a future agent needs to write the same key as a parallel sibling, either split the key again or add a dedicated merge node between the parallel branches and the fan-in point.
+
+---
+
+## ADR-009 — Writer agent handles diagram rendering inline (no separate diagram_generator yet)
+
+**Date:** 2026-03-27
+**Status:** Accepted
+
+### Context
+The full pipeline design includes a dedicated `diagram_generator` agent in Phase 4. Phase 2 needed diagrams in the output to make guides usable, but building a dedicated agent was scope-creep for the current phase.
+
+### Decision
+`writer.py` renders diagrams synchronously in Python using `svg_builder` before calling the LLM for content. `pedagogy_planner` produces `diagram_specs` in a format directly compatible with `create_state_machine()`. The writer substitutes the rendered SVG strings into the template alongside the LLM-generated content.
+
+### Consequences
+- **Positive:** guides.html has working inline SVG diagrams from Phase 2 onward.
+- **Positive:** No extra LLM call needed for diagram generation — the spec-to-SVG conversion is pure Python.
+- **Negative:** Diagram quality is limited to what `svg_builder`'s node/edge spec can express. Complex architecture diagrams with curved arrows or layered layouts aren't supported yet.
+- **Watch:** When Phase 4 adds `diagram_generator`, it should replace the inline rendering in `writer.py` rather than duplicate it.

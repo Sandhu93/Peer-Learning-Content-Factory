@@ -107,10 +107,11 @@ async def run_single_concept(
 
     final_state = await graph.ainvoke(initial_state)
 
-    # ── Save fact sheet (Phase 1 deliverable) ─────────────────────────────────
+    # ── Save outputs ───────────────────────────────────────────────────────────
     out_root = output_dir or (settings.output_path / concept.slug())
     out_root.mkdir(parents=True, exist_ok=True)
 
+    # Fact sheet — research evidence (always written)
     fact_sheet_path = out_root / "fact_sheet.json"
     fact_sheet = {
         "concept_name": final_state.get("concept_name"),
@@ -119,14 +120,38 @@ async def run_single_concept(
         "repo_path": final_state.get("repo_path"),
         "teaching_plan": final_state.get("teaching_plan", {}),
         "code_evidence": final_state.get("code_evidence", []),
+        "implementation_notes": final_state.get("implementation_notes", {}),
         "doc_context": final_state.get("doc_context", {}),
+        "generalized_pattern": final_state.get("generalized_pattern", {}),
     }
     fact_sheet_path.write_text(json.dumps(fact_sheet, indent=2, ensure_ascii=False))
 
-    console.print(f"\n[green]✓[/] Fact sheet written to [bold]{fact_sheet_path}[/]")
-    console.print(f"  Code evidence: {len(fact_sheet['code_evidence'])} snippets found")
+    # guide.html — Phase 2 deliverable (written if writer produced output)
+    guide_html = final_state.get("guide_html", "")
+    guide_path = None
+    if guide_html:
+        guide_path = out_root / "guide.html"
+        guide_path.write_text(guide_html, encoding="utf-8")
 
-    print(json.dumps(fact_sheet, indent=2, ensure_ascii=False))
+    # linkedin.md and reel_script.md — written if produced
+    linkedin_post = final_state.get("linkedin_post", "")
+    if linkedin_post:
+        (out_root / "linkedin.md").write_text(linkedin_post, encoding="utf-8")
+
+    reel_script = final_state.get("reel_script", "")
+    if reel_script:
+        (out_root / "reel_script.md").write_text(reel_script, encoding="utf-8")
+
+    # ── Console summary ────────────────────────────────────────────────────────
+    console.print(f"\n[green]✓[/] Fact sheet → [bold]{fact_sheet_path}[/]")
+    console.print(f"  Code evidence: {len(fact_sheet['code_evidence'])} snippets")
+    if guide_path:
+        console.print(f"[green]✓[/] Guide       → [bold]{guide_path}[/]")
+    if linkedin_post:
+        console.print(f"[green]✓[/] LinkedIn    → [bold]{out_root / 'linkedin.md'}[/]")
+    if reel_script:
+        console.print(f"[green]✓[/] Reel script → [bold]{out_root / 'reel_script.md'}[/]")
+
     return final_state
 
 

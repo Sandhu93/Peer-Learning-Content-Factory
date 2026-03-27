@@ -64,7 +64,8 @@ class PipelineState(TypedDict, total=False):
 
     # ── Research outputs ───────────────────────────────────────────────────────
     code_evidence: list[dict]       # list of CodeSnippet.model_dump()
-    doc_context: dict               # {feature_rationale, bug_stories[], tradeoffs[], evolution_notes}
+    implementation_notes: dict      # {implementation_summary, evidence_gaps[]} — written by code_researcher
+    doc_context: dict               # {feature_rationale, bug_stories[], tradeoffs[], evolution_notes} — written by doc_analyzer
     generalized_pattern: dict       # {pattern_name, general_description, naive_approach,
     #                                  why_naive_fails, production_approach,
     #                                  applicable_domains[], anti_patterns[]}

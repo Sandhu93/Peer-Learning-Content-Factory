@@ -71,13 +71,16 @@ class TestGraphTopology:
         graph = build_graph()
         assert graph is not None
 
-    def test_graph_has_expected_nodes(self):
+    def test_graph_has_all_phase2_nodes(self):
         from src.graph import build_graph
         graph = build_graph()
-        # LangGraph compiled graphs expose node names
         node_names = set(graph.nodes.keys())
-        assert "topic_parser" in node_names
-        assert "code_researcher" in node_names
+        expected = {
+            "topic_parser", "code_researcher", "doc_analyzer",
+            "concept_mapper", "pedagogy_planner", "writer",
+        }
+        for name in expected:
+            assert name in node_names, f"Missing node: {name}"
 
 
 class TestTopicParserNode:
@@ -162,7 +165,8 @@ class TestCodeResearcherNode:
         assert len(result["code_evidence"]) > 0
 
     @pytest.mark.asyncio
-    async def test_populates_doc_context(self, initial_state):
+    async def test_populates_implementation_notes(self, initial_state):
+        """code_researcher writes to implementation_notes, NOT doc_context (parallel safety)."""
         from src.agents.code_researcher import code_researcher_node
         from src.utils.llm import LLMResponse
 
@@ -190,5 +194,8 @@ class TestCodeResearcherNode:
                 mock_settings.repo_path = FIXTURE_REPO
                 result = await code_researcher_node(state_with_plan)
 
-        assert "doc_context" in result
-        assert "implementation_summary" in result["doc_context"]
+        assert "implementation_notes" in result
+        assert "implementation_summary" in result["implementation_notes"]
+        assert "evidence_gaps" in result["implementation_notes"]
+        # Must NOT touch doc_context — that belongs to doc_analyzer
+        assert "doc_context" not in result or result.get("doc_context") == state_with_plan.get("doc_context")
