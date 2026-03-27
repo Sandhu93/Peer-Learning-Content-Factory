@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Environment variables
+.env
+.env.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Project outputs (generated content — keep the directory structure)
+output/teaching_guides/*/
+!output/teaching_guides/.gitkeep
+
+# LangGraph / LangChain cache
+.langchain.db
+langchain_cache/
+
+# Test artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+*.log
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Type checking
+.mypy_cache/
+.ruff_cache/
+
+# md files
+peer_learning_concepts.md

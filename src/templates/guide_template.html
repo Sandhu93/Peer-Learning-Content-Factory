@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{concept_name}} — Peer Learning Guide</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ── Design Tokens ─────────────────────────────────────────────────────── */
+    :root {
+      --font:            'DM Sans', system-ui, sans-serif;
+      --font-serif:      'DM Serif Display', Georgia, serif;
+
+      /* Semantic colours — light mode */
+      --bg:              #f8f9fa;
+      --surface:         #ffffff;
+      --surface-raised:  #f2f4f6;
+      --border:          #e2e8f0;
+      --text:            #1a202c;
+      --text-muted:      #64748b;
+      --text-subtle:     #94a3b8;
+
+      --color-success:   #16a34a;
+      --color-success-bg:#dcfce7;
+      --color-error:     #dc2626;
+      --color-error-bg:  #fee2e2;
+      --color-warning:   #d97706;
+      --color-warning-bg:#fef3c7;
+      --color-blue:      #2563eb;
+      --color-blue-bg:   #dbeafe;
+      --color-coral:     #e05c4b;
+      --color-coral-bg:  #fde8e5;
+      --color-purple:    #7c3aed;
+      --color-purple-bg: #ede9fe;
+      --color-gray:      #64748b;
+      --color-gray-bg:   #f1f5f9;
+
+      --radius:          10px;
+      --radius-lg:       16px;
+      --shadow-sm:       0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+      --shadow:          0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
+    }
+
+    [data-theme="dark"] {
+      --bg:              #0f172a;
+      --surface:         #1e293b;
+      --surface-raised:  #263148;
+      --border:          #334155;
+      --text:            #f1f5f9;
+      --text-muted:      #94a3b8;
+      --text-subtle:     #64748b;
+
+      --color-success:   #4ade80;
+      --color-success-bg:#052e16;
+      --color-error:     #f87171;
+      --color-error-bg:  #450a0a;
+      --color-warning:   #fbbf24;
+      --color-warning-bg:#451a03;
+      --color-blue:      #60a5fa;
+      --color-blue-bg:   #1e3a5f;
+      --color-coral:     #fb8c7f;
+      --color-coral-bg:  #3d1411;
+      --color-purple:    #a78bfa;
+      --color-purple-bg: #2e1065;
+      --color-gray:      #94a3b8;
+      --color-gray-bg:   #1e293b;
+    }
+
+    /* ── Reset & Base ──────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      font-size: 16px;
+      line-height: 1.7;
+      color: var(--text);
+      background: var(--bg);
+      transition: background 0.2s, color 0.2s;
+    }
+
+    /* ── Layout ────────────────────────────────────────────────────────────── */
+    .page-wrapper { max-width: 860px; margin: 0 auto; padding: 2rem 1.5rem 6rem; }
+
+    /* ── Header ────────────────────────────────────────────────────────────── */
+    .guide-header {
+      border-bottom: 2px solid var(--border);
+      padding-bottom: 2rem;
+      margin-bottom: 2.5rem;
+    }
+
+    .category-badge {
+      display: inline-block;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--color-blue);
+      background: var(--color-blue-bg);
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+      margin-bottom: 0.75rem;
+    }
+
+    .guide-header h1 {
+      font-family: var(--font-serif);
+      font-size: clamp(1.75rem, 4vw, 2.6rem);
+      line-height: 1.2;
+      color: var(--text);
+      margin-bottom: 1rem;
+    }
+
+    .guide-header .subtitle {
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      max-width: 640px;
+    }
+
+    .meta-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 1.25rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .meta-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      padding: 0.2rem 0.65rem;
+      border-radius: 999px;
+    }
+
+    /* ── Theme Toggle ──────────────────────────────────────────────────────── */
+    .theme-toggle {
+      position: fixed;
+      top: 1.25rem;
+      right: 1.25rem;
+      z-index: 100;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 999px;
+      padding: 0.35rem 0.75rem;
+      font-family: var(--font);
+      font-size: 0.8rem;
+      cursor: pointer;
+      box-shadow: var(--shadow-sm);
+      transition: background 0.2s;
+    }
+    .theme-toggle:hover { background: var(--surface-raised); }
+
+    /* ── Typography ────────────────────────────────────────────────────────── */
+    h2 {
+      font-family: var(--font-serif);
+      font-size: 1.55rem;
+      color: var(--text);
+      margin: 2.5rem 0 1rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text);
+      margin: 1.75rem 0 0.6rem;
+    }
+
+    p { margin-bottom: 1rem; }
+    p:last-child { margin-bottom: 0; }
+
+    a { color: var(--color-blue); text-decoration: underline; text-decoration-thickness: 1px; }
+
+    ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+    li { margin-bottom: 0.35rem; }
+
+    /* ── Code ──────────────────────────────────────────────────────────────── */
+    code {
+      font-family: 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+      font-size: 0.875em;
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      padding: 0.1em 0.35em;
+      border-radius: 4px;
+    }
+
+    pre {
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem;
+      overflow-x: auto;
+      margin: 1rem 0 1.5rem;
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+
+    pre code {
+      background: none;
+      border: none;
+      padding: 0;
+      font-size: inherit;
+    }
+
+    .file-ref {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      margin-bottom: 0.5rem;
+    }
+
+    /* ── Callout Boxes ─────────────────────────────────────────────────────── */
+    .callout {
+      border-left: 4px solid;
+      border-radius: 0 var(--radius) var(--radius) 0;
+      padding: 1rem 1.25rem;
+      margin: 1.5rem 0;
+    }
+
+    .callout-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+
+    .callout.problem   { border-color: var(--color-error);   background: var(--color-error-bg); }
+    .callout.problem   .callout-label { color: var(--color-error); }
+
+    .callout.solution  { border-color: var(--color-success); background: var(--color-success-bg); }
+    .callout.solution  .callout-label { color: var(--color-success); }
+
+    .callout.insight   { border-color: var(--color-warning); background: var(--color-warning-bg); }
+    .callout.insight   .callout-label { color: var(--color-warning); }
+
+    .callout.bug-story { border-color: var(--color-coral);   background: var(--color-coral-bg); }
+    .callout.bug-story .callout-label { color: var(--color-coral); }
+
+    /* ── Comparison Cards ──────────────────────────────────────────────────── */
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin: 1.5rem 0;
+    }
+
+    @media (max-width: 600px) { .comparison-grid { grid-template-columns: 1fr; } }
+
+    .comparison-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .comparison-card .card-header {
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comparison-card.naive  .card-header { color: var(--color-error); }
+    .comparison-card.prod   .card-header { color: var(--color-success); }
+
+    /* ── SVG Diagrams ──────────────────────────────────────────────────────── */
+    .diagram-wrapper {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      box-shadow: var(--shadow-sm);
+      overflow: hidden;
+    }
+
+    .diagram-caption {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: 0.75rem;
+    }
+
+    /* ── Discussion Prompts ────────────────────────────────────────────────── */
+    .discussion-prompts {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem 1.75rem;
+      margin: 2rem 0;
+      counter-reset: prompt;
+    }
+
+    .discussion-prompts h3 {
+      margin-top: 0;
+      margin-bottom: 1rem;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .prompt-item {
+      counter-increment: prompt;
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 0.85rem;
+      font-size: 0.97rem;
+    }
+
+    .prompt-item::before {
+      content: counter(prompt);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 1.6rem;
+      height: 1.6rem;
+      border-radius: 999px;
+      background: var(--color-blue-bg);
+      color: var(--color-blue);
+      font-size: 0.75rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 0.1rem;
+    }
+
+    /* ── LinkedIn Preview Card ─────────────────────────────────────────────── */
+    .linkedin-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 0;
+      margin: 2rem 0;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    .linkedin-card-header {
+      background: var(--color-blue-bg);
+      padding: 0.75rem 1.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-blue);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .linkedin-card-body {
+      padding: 1.5rem;
+      white-space: pre-wrap;
+      font-size: 0.92rem;
+      line-height: 1.65;
+      color: var(--text);
+    }
+
+    .linkedin-card-footer {
+      padding: 0.75rem 1.5rem;
+      border-top: 1px solid var(--border);
+      background: var(--surface-raised);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .copy-btn {
+      font-family: var(--font);
+      font-size: 0.8rem;
+      font-weight: 500;
+      background: var(--color-blue);
+      color: white;
+      border: none;
+      border-radius: 999px;
+      padding: 0.35rem 1rem;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    .copy-btn:hover { opacity: 0.85; }
+
+    /* ── Reel Script ───────────────────────────────────────────────────────── */
+    .reel-script {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      margin: 2rem 0;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .reel-script-header {
+      background: var(--color-coral-bg);
+      padding: 0.75rem 1.25rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--color-coral);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+    }
+
+    .reel-scene {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: 5rem 1fr;
+      gap: 1rem;
+    }
+
+    .reel-scene:last-child { border-bottom: none; }
+
+    .scene-timestamp {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--color-coral);
+      font-variant-numeric: tabular-nums;
+      padding-top: 0.15rem;
+    }
+
+    .scene-content { font-size: 0.92rem; }
+
+    .scene-content .scene-title {
+      font-weight: 600;
+      margin-bottom: 0.2rem;
+    }
+
+    .scene-content .scene-visual {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      font-style: italic;
+    }
+
+    /* ── Related Topics ────────────────────────────────────────────────────── */
+    .related-topics { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
+
+    .topic-pill {
+      font-size: 0.82rem;
+      font-weight: 500;
+      background: var(--surface-raised);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s;
+    }
+    .topic-pill:hover { background: var(--color-blue-bg); color: var(--color-blue); }
+
+    /* ── Divider ───────────────────────────────────────────────────────────── */
+    .section-divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 3rem 0 2rem;
+    }
+  </style>
+</head>
+
+<body>
+
+<button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle theme">
+  ☀️ / 🌙
+</button>
+
+<div class="page-wrapper">
+
+  <!-- ── HEADER ──────────────────────────────────────────────────────────── -->
+  <header class="guide-header">
+    <div class="category-badge">{{category}}</div>
+    <h1>{{concept_name}}</h1>
+    <p class="subtitle">{{why_it_matters}}</p>
+    <div class="meta-row">
+      <span class="meta-pill">📊 {{difficulty}}</span>
+      <span class="meta-pill">⏱ ~45 min</span>
+      <span class="meta-pill">{{category}}</span>
+    </div>
+  </header>
+
+  <!-- ── THE PROBLEM ─────────────────────────────────────────────────────── -->
+  <section id="problem">
+    <h2>The Problem</h2>
+
+    <div class="callout problem">
+      <div class="callout-label">Why this matters</div>
+      <p>{{problem_statement}}</p>
+    </div>
+
+    <p>{{problem_context}}</p>
+
+    <!-- SVG Diagram: problem illustration -->
+    <div class="diagram-wrapper">
+      {{diagram_problem}}
+      <p class="diagram-caption">{{diagram_problem_caption}}</p>
+    </div>
+
+    <p>{{problem_elaboration}}</p>
+  </section>
+
+  <!-- ── NAIVE VS PRODUCTION ─────────────────────────────────────────────── -->
+  <section id="comparison">
+    <h2>Naive Approach vs Production Solution</h2>
+
+    <div class="comparison-grid">
+      <div class="comparison-card naive">
+        <div class="card-header">❌ Naive Approach</div>
+        <p>{{naive_description}}</p>
+        <pre><code class="language-python">{{naive_code}}</code></pre>
+        <p><strong>Why it fails:</strong> {{naive_failure}}</p>
+      </div>
+      <div class="comparison-card prod">
+        <div class="card-header">✅ Production Solution</div>
+        <p>{{prod_description}}</p>
+        <pre><code class="language-python">{{prod_code}}</code></pre>
+        <p><strong>Why it works:</strong> {{prod_rationale}}</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── HOW IT WORKS ─────────────────────────────────────────────────────── -->
+  <section id="how-it-works">
+    <h2>How It Works</h2>
+
+    <p>{{how_it_works_intro}}</p>
+
+    <!-- SVG Diagram: architecture / state machine -->
+    <div class="diagram-wrapper">
+      {{diagram_main}}
+      <p class="diagram-caption">{{diagram_main_caption}}</p>
+    </div>
+
+    <h3>{{subsection_1_title}}</h3>
+    <p>{{subsection_1_content}}</p>
+
+    <h3>{{subsection_2_title}}</h3>
+    <p>{{subsection_2_content}}</p>
+
+    <div class="callout insight">
+      <div class="callout-label">Key insight</div>
+      <p>{{key_insight}}</p>
+    </div>
+  </section>
+
+  <!-- ── CODE WALKTHROUGH ────────────────────────────────────────────────── -->
+  <section id="code">
+    <h2>Code Walkthrough</h2>
+
+    <p>{{code_intro}}</p>
+
+    <span class="file-ref">📄 {{code_file_ref_1}}</span>
+    <pre><code class="language-python">{{code_snippet_1}}</code></pre>
+
+    <p>{{code_snippet_1_explanation}}</p>
+
+    <span class="file-ref">📄 {{code_file_ref_2}}</span>
+    <pre><code class="language-python">{{code_snippet_2}}</code></pre>
+
+    <p>{{code_snippet_2_explanation}}</p>
+  </section>
+
+  <!-- ── THE BUG STORY ────────────────────────────────────────────────────── -->
+  <section id="bug-story">
+    <h2>The Bug That Made Us Add This</h2>
+
+    <div class="callout bug-story">
+      <div class="callout-label">🐛 Production Bug Story</div>
+      <p><strong>{{bug_title}}</strong></p>
+      <p><strong>Symptom:</strong> {{bug_symptom}}</p>
+      <p><strong>Root cause:</strong> {{bug_root_cause}}</p>
+      <p><strong>Fix:</strong> {{bug_fix}}</p>
+      <p><strong>Lesson:</strong> {{bug_lesson}}</p>
+    </div>
+  </section>
+
+  <!-- ── WHERE TO USE / NOT USE ───────────────────────────────────────────── -->
+  <section id="tradeoffs">
+    <h2>When to Use It — and When Not To</h2>
+
+    <p>{{tradeoffs_intro}}</p>
+
+    <div class="callout solution">
+      <div class="callout-label">✅ Use when</div>
+      <ul>
+        {{use_when_list}}
+      </ul>
+    </div>
+
+    <div class="callout problem">
+      <div class="callout-label">❌ Avoid when</div>
+      <ul>
+        {{avoid_when_list}}
+      </ul>
+    </div>
+
+    <h3>Anti-patterns</h3>
+    <p>{{anti_patterns}}</p>
+  </section>
+
+  <!-- ── DISCUSSION PROMPTS ───────────────────────────────────────────────── -->
+  <section id="discussion">
+    <h2>Discussion Prompts</h2>
+
+    <div class="discussion-prompts">
+      <h3>For your next peer session</h3>
+      {{discussion_prompt_items}}
+    </div>
+  </section>
+
+  <hr class="section-divider" />
+
+  <!-- ── LINKEDIN POST ────────────────────────────────────────────────────── -->
+  <section id="linkedin">
+    <h2>LinkedIn Post</h2>
+
+    <div class="linkedin-card">
+      <div class="linkedin-card-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+        Ready-to-post LinkedIn content
+      </div>
+      <div class="linkedin-card-body" id="linkedin-content">{{linkedin_post}}</div>
+      <div class="linkedin-card-footer">
+        <span style="font-size:0.78rem;color:var(--text-muted)">~{{linkedin_char_count}} characters</span>
+        <button class="copy-btn" onclick="copyLinkedIn()">Copy to clipboard</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── REEL SCRIPT ──────────────────────────────────────────────────────── -->
+  <section id="reel">
+    <h2>60-Second Reel Script</h2>
+
+    <div class="reel-script">
+      <div class="reel-script-header">🎬 Scene-by-scene with visual directions</div>
+      {{reel_scenes}}
+    </div>
+  </section>
+
+  <!-- ── RELATED TOPICS ────────────────────────────────────────────────────── -->
+  <section id="related">
+    <h2>Related Topics</h2>
+    <div class="related-topics">
+      {{related_topic_pills}}
+    </div>
+  </section>
+
+</div><!-- /page-wrapper -->
+
+<script>
+  function toggleTheme() {
+    const html = document.documentElement;
+    html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('theme', html.dataset.theme);
+  }
+
+  // Restore saved theme
+  (function() {
+    const saved = localStorage.getItem('theme');
+    if (saved) document.documentElement.dataset.theme = saved;
+    else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.dataset.theme = 'dark';
+    }
+  })();
+
+  function copyLinkedIn() {
+    const text = document.getElementById('linkedin-content').textContent;
+    navigator.clipboard.writeText(text.trim()).then(() => {
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy to clipboard', 2000);
+    });
+  }
+</script>
+
+</body>
+</html>

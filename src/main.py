@@ -1,0 +1,220 @@
+"""
+CLI entry point for the Peer Learning Content Factory.
+
+Usage:
+    # Single concept (Phase 1 — produces JSON fact sheet)
+    python -m src.main --concept "Circuit breaker for provider failure"
+
+    # Process all concepts in batch
+    python -m src.main --batch
+
+    # Process a specific category
+    python -m src.main --category "Reliability, Failure Isolation, and Production Hardening"
+
+    # Dry run — list what would be processed
+    python -m src.main --batch --dry-run
+
+    # Show all concepts in the backlog
+    python -m src.main --list
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+import logging
+import sys
+from pathlib import Path
+
+from rich.console import Console
+from rich.logging import RichHandler
+from rich.panel import Panel
+from rich.table import Table
+
+console = Console()
+
+
+def setup_logging(level: str = "INFO") -> None:
+    logging.basicConfig(
+        level=getattr(logging, level.upper(), logging.INFO),
+        format="%(message)s",
+        datefmt="[%X]",
+        handlers=[RichHandler(console=console, rich_tracebacks=True)],
+    )
+
+
+async def run_single_concept(concept_name: str, output_dir: Path | None = None) -> dict:
+    """Run the full pipeline for a single concept. Returns the final state."""
+    from src.config import settings
+    from src.graph import build_graph
+    from src.utils.markdown_parser import find_concept
+
+    concept = find_concept(concept_name)
+    if concept is None:
+        console.print(f"[red]Concept not found:[/] {concept_name!r}")
+        console.print("Use [bold]--list[/] to see all available concepts.")
+        sys.exit(1)
+
+    console.print(Panel(
+        f"[bold]{concept.concept_name}[/]\n"
+        f"[dim]{concept.category}[/]\n\n"
+        f"{concept.why_it_matters}",
+        title="Processing concept",
+        border_style="blue",
+    ))
+
+    graph = build_graph()
+
+    initial_state = {
+        "concept_name": concept.concept_name,
+        "category": concept.category,
+        "why_it_matters": concept.why_it_matters,
+        "repo_anchors": concept.repo_anchors,
+        "revision_count": 0,
+        "is_complete": False,
+        "errors": [],
+    }
+
+    final_state = await graph.ainvoke(initial_state)
+
+    # ── Save fact sheet (Phase 1 deliverable) ─────────────────────────────────
+    out_root = output_dir or (settings.output_path / concept.slug())
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    fact_sheet_path = out_root / "fact_sheet.json"
+    fact_sheet = {
+        "concept_name": final_state.get("concept_name"),
+        "category": final_state.get("category"),
+        "why_it_matters": final_state.get("why_it_matters"),
+        "teaching_plan": final_state.get("teaching_plan", {}),
+        "code_evidence": final_state.get("code_evidence", []),
+        "doc_context": final_state.get("doc_context", {}),
+    }
+    fact_sheet_path.write_text(json.dumps(fact_sheet, indent=2, ensure_ascii=False))
+
+    console.print(f"\n[green]✓[/] Fact sheet written to [bold]{fact_sheet_path}[/]")
+    console.print(
+        f"  Code evidence: {len(fact_sheet['code_evidence'])} snippets found"
+    )
+
+    # Also print to stdout so --concept works with shell pipes
+    print(json.dumps(fact_sheet, indent=2, ensure_ascii=False))
+
+    return final_state
+
+
+async def run_batch(
+    category: str | None = None,
+    dry_run: bool = False,
+    resume: bool = False,
+) -> None:
+    """Process multiple concepts from the backlog."""
+    from src.config import settings
+    from src.utils.markdown_parser import parse_concepts
+
+    concepts = parse_concepts()
+    if category:
+        concepts = [c for c in concepts if category.lower() in c.category.lower()]
+
+    if not concepts:
+        console.print("[yellow]No concepts matched the filter.[/]")
+        return
+
+    console.print(f"\n[bold]Found {len(concepts)} concepts to process[/]\n")
+
+    table = Table(title="Concept Backlog", show_lines=True)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Concept", style="bold")
+    table.add_column("Category", style="dim")
+    table.add_column("Status", justify="center")
+
+    for i, c in enumerate(concepts, 1):
+        out_path = settings.output_path / c.slug() / "fact_sheet.json"
+        status = "[green]done[/]" if out_path.exists() else "[dim]pending[/]"
+        if resume and out_path.exists():
+            status = "[blue]skip[/]"
+        table.add_row(str(i), c.concept_name, c.category[:40], status)
+
+    console.print(table)
+
+    if dry_run:
+        console.print("\n[dim]Dry run — no API calls made.[/]")
+        return
+
+    for concept in concepts:
+        if resume:
+            out_path = settings.output_path / concept.slug() / "fact_sheet.json"
+            if out_path.exists():
+                console.print(f"[dim]Skipping (already done):[/] {concept.concept_name}")
+                continue
+
+        try:
+            await run_single_concept(concept.concept_name)
+        except Exception as exc:
+            console.print(f"[red]Error processing {concept.concept_name!r}:[/] {exc}")
+            logging.exception("Batch processing error")
+
+
+def list_concepts() -> None:
+    """Print all concepts in the backlog."""
+    from src.utils.markdown_parser import parse_concepts
+
+    concepts = parse_concepts()
+    table = Table(title=f"Concept Backlog ({len(concepts)} concepts)", show_lines=False)
+    table.add_column("#", style="dim", width=4)
+    table.add_column("Concept", style="bold")
+    table.add_column("Category", style="dim")
+    table.add_column("Difficulty", justify="center")
+
+    for i, c in enumerate(concepts, 1):
+        table.add_row(str(i), c.concept_name, c.category[:45], "—")
+
+    console.print(table)
+
+
+def build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="peer-factory",
+        description="Peer Learning Content Factory — generate teaching guides from a codebase",
+    )
+    p.add_argument("--concept", "-c", metavar="NAME", help="Process a single concept by name")
+    p.add_argument("--batch", "-b", action="store_true", help="Process all concepts")
+    p.add_argument("--category", metavar="CAT", help="Filter batch to a specific category")
+    p.add_argument("--dry-run", action="store_true", help="List what would be processed, no API calls")
+    p.add_argument("--resume", action="store_true", help="Skip concepts with existing outputs")
+    p.add_argument("--list", "-l", action="store_true", help="List all concepts in the backlog")
+    p.add_argument("--output", "-o", metavar="PATH", help="Output directory for single concept")
+    p.add_argument("--log-level", default="INFO", help="Logging level (default: INFO)")
+    return p
+
+
+def cli() -> None:
+    """Entry point called by the peer-factory script and by python -m src.main."""
+    parser = build_parser()
+    args = parser.parse_args()
+
+    setup_logging(args.log_level)
+
+    if args.list:
+        list_concepts()
+        return
+
+    if args.concept:
+        output = Path(args.output) if args.output else None
+        asyncio.run(run_single_concept(args.concept, output))
+        return
+
+    if args.batch:
+        asyncio.run(run_batch(
+            category=args.category,
+            dry_run=args.dry_run,
+            resume=args.resume,
+        ))
+        return
+
+    parser.print_help()
+
+
+if __name__ == "__main__":
+    cli()
