@@ -1,11 +1,13 @@
 """
-Writer Agent — Phase 2, Node 5.
+Writer Agent — Phase 2/4, Node 5.
 
 Takes the complete fact sheet (research + plan) and produces the filled
-HTML guide, LinkedIn post, and reel script.
+HTML guide. In Phase 4, linkedin_post, reel_script, and diagram_svgs are
+produced by dedicated parallel agents (linkedin_writer, reel_writer,
+diagram_generator) that run after this node.
 
 Responsibilities:
-  1. Render SVG diagrams from diagram_specs using svg_builder
+  1. Render SVG diagrams from diagram_specs (for embedding in guide_html)
   2. Call Claude with all research context to generate content JSON
   3. Fill the frozen HTML template with the generated content + diagrams
 
@@ -15,7 +17,7 @@ Input state fields used:
     teaching_plan, diagram_specs
 
 Output state fields written:
-    guide_html, linkedin_post, reel_script, diagram_svgs
+    guide_html  (Phase 4: linkedin_post/reel_script/diagram_svgs owned by dedicated agents)
 """
 
 from __future__ import annotations
@@ -101,17 +103,14 @@ async def writer_node(state: PipelineState) -> PipelineState:
     # ── Step 4: Fill the HTML template ────────────────────────────────────────
     guide_html = _fill_template(content, state, rendered_svgs, teaching_plan)
 
-    linkedin_post = content.get("linkedin_post", "")
-    reel_script = _format_reel_script(content.get("reel_scenes", []))
-
     logger.info("writer: guide generated (%d chars)", len(guide_html))
 
+    # Phase 4: linkedin_post, reel_script, and diagram_svgs are owned by
+    # dedicated parallel agents (linkedin_writer, reel_writer, diagram_generator).
+    # Writer returns only guide_html.
     return {
         **state,
         "guide_html": guide_html,
-        "linkedin_post": linkedin_post,
-        "reel_script": reel_script,
-        "diagram_svgs": svg_list,
     }
 
 

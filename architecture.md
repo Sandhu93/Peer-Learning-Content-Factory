@@ -3,7 +3,7 @@
 This document describes the structure, data flow, and component responsibilities of the Peer Learning Content Factory. It is updated whenever the system design changes in a meaningful way.
 
 **Last updated:** 2026-03-28
-**Current phase:** Phase 3 complete — full pipeline with quality gate (tech_reviewer → editor → save_outputs)
+**Current phase:** Phase 4 complete — parallel content variants (linkedin_writer ‖ reel_writer ‖ diagram_generator)
 
 ---
 
@@ -37,11 +37,12 @@ The system takes a concept name from a markdown backlog, researches it against a
 │                     Content Pipeline                            │
 │                                                                 │
 │                        [writer]                                 │
-│                  (guide_html + linkedin_post                    │
-│                   + reel_script + diagram_svgs)                 │
-│                                                                 │
-│  Phase 4 will split into: [linkedin_writer] [reel_writer]       │
-│                           [diagram_generator] running parallel  │
+│                     (guide_html only)                           │
+│                  /          │           \                       │
+│   [linkedin_writer]  [reel_writer]  [diagram_generator]         │
+│    (linkedin_post)  (reel_script)   (diagram_svgs)              │
+│                  \          │           /                       │
+│                         (fan-in)                                │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────────┐
@@ -125,11 +126,12 @@ Sub-models (`CodeSnippet`, `BugStory`, `DiagramSpec`) are Pydantic `BaseModel` c
 | `doc_analyzer` | Claude Sonnet | 0.0 | README, bugs.md, arch docs from repo | `doc_context` (rationale, bug stories, tradeoffs) |
 | `concept_mapper` | GPT-4o → Claude fallback | 0.3 | code evidence + doc context | `generalized_pattern` (portable SE pattern) |
 | `pedagogy_planner` | Claude Sonnet | 0.2 | full fact sheet + generalized pattern | enriched `teaching_plan`, `diagram_specs` |
-| `writer` | Claude Sonnet | 0.3 | all research + teaching plan + HTML template | `guide_html`, `linkedin_post`, `reel_script`, `diagram_svgs` |
+| `writer` | Claude Sonnet | 0.3 | all research + teaching plan + HTML template | `guide_html` (Phase 4: standalone variants owned by dedicated agents) |
 
 Note: `doc_analyzer` and `code_researcher` run in **parallel** (fan-out from `topic_parser`). `concept_mapper` is the fan-in point that waits for both.
 
 ### Phase 3 — Quality Gate (complete)
+
 
 | Agent | Model | Temp | Input | Output |
 |---|---|---|---|---|
@@ -142,6 +144,20 @@ Graph routing after `tech_reviewer`:
 - not accurate AND retries remain → `increment_revision` → `writer` (retry loop)
 
 `save_outputs` runs at the end of every pipeline execution. In `--interactive` mode, LangGraph interrupts before `save_outputs` for human approval.
+
+### Phase 4 — Content Variants (complete)
+
+| Agent | Model | Temp | Input | Output |
+|---|---|---|---|---|
+| `linkedin_writer` | Claude Sonnet | 0.4 | guide_html, teaching_plan hook/analogy | `linkedin_post` (polished standalone post) |
+| `reel_writer` | GPT-4o → Claude fallback | 0.4 | guide_html, teaching_plan hook/analogy | `reel_script` (formatted plain text, 6 scenes) |
+| `diagram_generator` | — (no LLM) | — | diagram_specs | `diagram_svgs` (list of SVG strings) |
+
+All three run in **parallel** (fan-out from `writer`). `tech_reviewer` is the fan-in point that waits for all three. Each agent returns only its own state key (ADR-010).
+
+`diagram_generator` is pure Python — it calls `svg_builder` directly with the `diagram_specs` already produced by `pedagogy_planner`. No LLM call, no prompt file.
+
+`writer` now produces `guide_html` only. The guide HTML still embeds linkedin/reel/diagram content (generated inline by writer's LLM call for completeness); the dedicated agents produce higher-quality standalone variants for the separate `.md` files.
 
 ---
 
@@ -260,7 +276,7 @@ This design means two concurrent API requests can target different repos without
 | **1 — Foundation** ✅ | `topic_parser`, `code_researcher` | `fact_sheet.json` per concept |
 | **2 — Core pipeline** ✅ | `doc_analyzer`, `concept_mapper`, `pedagogy_planner`, `writer` | `guide.html`, `linkedin.md`, `reel_script.md` per concept |
 | **3 — Quality gate** ✅ | `tech_reviewer`, `editor`, `save_outputs`, human-in-the-loop | Reviewed, edited guides with accuracy guarantee |
-| **4 — Content variants** | Dedicated `linkedin_writer`, `reel_writer`, `diagram_generator` | Higher-quality standalone variants |
+| **4 — Content variants** ✅ | `linkedin_writer`, `reel_writer`, `diagram_generator` (parallel fan-out from `writer`) | Higher-quality standalone `linkedin.md`, `reel_script.md`, `diagram_svgs` |
 | **5 — Scale** | Batch processor, index builder, cost tracker | All 80+ concepts, index.html |
 
 Each phase adds nodes to `src/graph.py` without changing the nodes from previous phases.

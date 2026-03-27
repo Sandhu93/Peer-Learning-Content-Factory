@@ -316,3 +316,40 @@ In `--interactive` mode, `interrupt_before=["save_outputs"]` causes LangGraph to
 - **Positive:** The complete pipeline — including file writing — is exercised by a single graph run.
 - **Negative:** `output_path` must be in `initial_state`. A caller that forgets to set it will cause `save_outputs` to log an error and set `is_complete: False` rather than crashing the graph.
 - **Watch:** `save_outputs` uses `encoding="utf-8"` on every `write_text()` call (see BUG-006, BUG-008 pattern).
+
+---
+
+## ADR-013 — Phase 4 content variant fan-out: writer produces guide_html only; dedicated agents own standalone outputs
+
+**Date:** 2026-03-28
+**Status:** Accepted
+
+### Context
+In Phase 3, `writer` produced all four content outputs: `guide_html`, `linkedin_post`, `reel_script`, and `diagram_svgs`. This made the writer prompt enormous and spread responsibility too thin — LinkedIn copy, reel scripting, and SVG rendering have distinct quality criteria that compete inside a single LLM call.
+
+Phase 4 goal: higher-quality standalone variants by giving each output its own dedicated agent with a focused prompt and (where appropriate) a different model.
+
+### Options considered
+
+| Option | Pros | Cons |
+|---|---|---|
+| **Keep writer producing everything; add dedicated agents that post-process** | No graph changes | Duplicates work; post-processing agents would overwrite writer's fields |
+| **Strip linkedin/reel/diagram from writer; dedicated agents produce them from scratch** | Clear ownership; no duplication | Dedicated agents lose the guide context unless guide_html is passed to them |
+| **Writer produces guide_html; dedicated agents read guide_html for context** | Clean ownership split; agents get rich context from the finished guide; no duplication | Diagram SVGs embedded in guide_html are re-rendered by writer for the template; diagram_generator provides the standalone list |
+
+### Decision
+`writer` produces `guide_html` only. The three dedicated agents fan out in parallel after writer:
+- `linkedin_writer` — reads `guide_html` + `teaching_plan`; produces `linkedin_post`
+- `reel_writer` — reads `guide_html` + `teaching_plan`; produces `reel_script` (GPT-4o → Claude fallback)
+- `diagram_generator` — reads `diagram_specs`; produces `diagram_svgs` (pure Python, no LLM)
+
+`tech_reviewer` is the fan-in point — it waits for all three to complete before running.
+
+The guide HTML still contains embedded linkedin/reel content (writer's LLM call still generates these for the HTML template). The dedicated agents produce *better* standalone variants for the separate `.md` files. This is intentional duplication: the HTML guide is self-contained; the standalone files are optimised for their respective distribution channels.
+
+### Consequences
+- **Positive:** Each agent has a focused prompt tuned to its output format.
+- **Positive:** `reel_writer` can use GPT-4o (which was planned for this role in the original phase roadmap) without making the entire guide generation dependent on OpenAI availability.
+- **Positive:** `diagram_generator` has no LLM cost — pure `svg_builder` call, always fast.
+- **Negative:** Writer's LLM call still generates linkedin/reel content for the HTML template, so there is some token duplication. Acceptable at Phase 4 scale; revisit if cost becomes significant.
+- **Watch:** All three parallel agents must follow ADR-010 (return only owned keys) to avoid write conflicts during LangGraph state merging.
