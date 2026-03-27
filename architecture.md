@@ -2,7 +2,7 @@
 
 This document describes the structure, data flow, and component responsibilities of the Peer Learning Content Factory. It is updated whenever the system design changes in a meaningful way.
 
-**Last updated:** 2026-03-27
+**Last updated:** 2026-03-28
 **Current phase:** Phase 3 complete — full pipeline with quality gate (tech_reviewer → editor → save_outputs)
 
 ---
@@ -36,13 +36,12 @@ The system takes a concept name from a markdown backlog, researches it against a
 ┌──────────────────────────────▼──────────────────────────────────┐
 │                     Content Pipeline                            │
 │                                                                 │
-│          ┌──────────────┬───────────────┐                       │
-│          ▼              ▼               ▼                       │
-│       [writer]  [linkedin_writer]  [reel_writer]                │
-│          │              │               │                       │
-│          └──────────────┴───────────────┘                       │
-│                         │                                       │
-│               [diagram_generator]                               │
+│                        [writer]                                 │
+│                  (guide_html + linkedin_post                    │
+│                   + reel_script + diagram_svgs)                 │
+│                                                                 │
+│  Phase 4 will split into: [linkedin_writer] [reel_writer]       │
+│                           [diagram_generator] running parallel  │
 └─────────────────────────┬───────────────────────────────────────┘
                           │
 ┌─────────────────────────▼───────────────────────────────────────┐
@@ -57,7 +56,7 @@ The system takes a concept name from a markdown backlog, researches it against a
 │              │                                                  │
 │      [human review] ←─ --interactive mode                      │
 │         /       \                                               │
-│      approve    revise ──→ back to [pedagogy_planner]           │
+│   approve/skip  abort (no files written)                        │
 │         │                                                       │
 │    [save_outputs]                                               │
 └─────────────────────────────────────────────────────────────────┘
