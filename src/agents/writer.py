@@ -330,8 +330,20 @@ DISCUSSION PROMPTS (use these exactly):
 
 RELATED CONCEPTS (use for related_topics):
 {', '.join(teaching_plan.get('related_concepts', [])[:5])}
-
+{_corrections_section(state)}
 Produce the complete guide content JSON as specified.""".strip()
+
+
+def _corrections_section(state: PipelineState) -> str:
+    """Return a CORRECTIONS block when the writer is being called after a review failure."""
+    review_result = state.get("review_result", {})
+    corrections = review_result.get("corrections", [])
+    if not corrections:
+        return ""
+    lines = ["\nCORRECTIONS FROM TECHNICAL REVIEW (fix these in your output):"]
+    for c in corrections:
+        lines.append(f"- {c}")
+    return "\n".join(lines) + "\n"
 
 
 def _format_evidence(evidence: list[dict]) -> str:

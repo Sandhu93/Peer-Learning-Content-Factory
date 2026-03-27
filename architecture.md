@@ -3,7 +3,7 @@
 This document describes the structure, data flow, and component responsibilities of the Peer Learning Content Factory. It is updated whenever the system design changes in a meaningful way.
 
 **Last updated:** 2026-03-27
-**Current phase:** Phase 2 complete — full pipeline produces guide.html per concept
+**Current phase:** Phase 3 complete — full pipeline with quality gate (tech_reviewer → editor → save_outputs)
 
 ---
 
@@ -130,19 +130,19 @@ Sub-models (`CodeSnippet`, `BugStory`, `DiagramSpec`) are Pydantic `BaseModel` c
 
 Note: `doc_analyzer` and `code_researcher` run in **parallel** (fan-out from `topic_parser`). `concept_mapper` is the fan-in point that waits for both.
 
-### Phase 3 — Quality Gate (pending)
+### Phase 3 — Quality Gate (complete)
 
 | Agent | Model | Temp | Input | Output |
 |---|---|---|---|---|
-| `tech_reviewer` | Claude Sonnet | 0.0 | guide HTML + codebase access | `review_result` (is_accurate, corrections) |
-| `editor` | Claude Sonnet | 0.2 | reviewed guide HTML | `editor_result`, polished HTML |
+| `tech_reviewer` | Claude Sonnet | 0.0 | guide HTML, code_evidence, implementation_notes | `review_result` {is_accurate, corrections[], confidence} |
+| `editor` | Claude Sonnet | 0.2 | guide HTML, review_result | `editor_result` {changes_made[]}, updated `guide_html` |
+| `save_outputs` | — (no LLM) | — | all state fields + output_path | files on disk, `is_complete: True` |
 
-### Phase 3 — Quality Gate
+Graph routing after `tech_reviewer`:
+- `is_accurate` OR `revision_count >= max_revisions` → `editor`
+- not accurate AND retries remain → `increment_revision` → `writer` (retry loop)
 
-| Agent | Model | Temp | Input | Output |
-|---|---|---|---|---|
-| `tech_reviewer` | Claude Sonnet | 0.0 | guide HTML + codebase access | `review_result` (is_accurate, corrections) |
-| `editor` | Claude Sonnet | 0.2 | reviewed guide HTML | `editor_result`, polished HTML |
+`save_outputs` runs at the end of every pipeline execution. In `--interactive` mode, LangGraph interrupts before `save_outputs` for human approval.
 
 ---
 
@@ -260,7 +260,7 @@ This design means two concurrent API requests can target different repos without
 |---|---|---|
 | **1 — Foundation** ✅ | `topic_parser`, `code_researcher` | `fact_sheet.json` per concept |
 | **2 — Core pipeline** ✅ | `doc_analyzer`, `concept_mapper`, `pedagogy_planner`, `writer` | `guide.html`, `linkedin.md`, `reel_script.md` per concept |
-| **3 — Quality gate** | `tech_reviewer`, `editor`, human-in-the-loop | Reviewed, edited guides with accuracy guarantee |
+| **3 — Quality gate** ✅ | `tech_reviewer`, `editor`, `save_outputs`, human-in-the-loop | Reviewed, edited guides with accuracy guarantee |
 | **4 — Content variants** | Dedicated `linkedin_writer`, `reel_writer`, `diagram_generator` | Higher-quality standalone variants |
 | **5 — Scale** | Batch processor, index builder, cost tracker | All 80+ concepts, index.html |
 

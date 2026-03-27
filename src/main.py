@@ -30,7 +30,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import logging
 import sys
 from pathlib import Path
@@ -71,6 +70,7 @@ async def run_single_concept(
     concept_name: str,
     repo_path: Path,
     output_dir: Path | None = None,
+    interactive: bool = False,
 ) -> dict:
     """Run the full pipeline for a single concept. Returns the final state."""
     from src.config import settings
@@ -83,6 +83,8 @@ async def run_single_concept(
         console.print("Use [bold]--list[/] to see all available concepts.")
         sys.exit(1)
 
+    out_root = output_dir or (settings.output_path / concept.slug())
+
     console.print(Panel(
         f"[bold]{concept.concept_name}[/]\n"
         f"[dim]{concept.category}[/]\n\n"
@@ -92,67 +94,104 @@ async def run_single_concept(
         border_style="blue",
     ))
 
-    graph = build_graph()
+    graph = build_graph(interactive=interactive)
 
     initial_state = {
         "concept_name": concept.concept_name,
         "category": concept.category,
         "why_it_matters": concept.why_it_matters,
         "repo_anchors": concept.repo_anchors,
-        "repo_path": str(repo_path),   # travels with the run; agents read from here
+        "repo_path": str(repo_path),       # travels with the run; agents read from here
+        "output_path": str(out_root),      # save_outputs node writes here
         "revision_count": 0,
         "is_complete": False,
         "errors": [],
     }
 
-    final_state = await graph.ainvoke(initial_state)
+    if interactive:
+        final_state = await _run_interactive(graph, initial_state)
+    else:
+        final_state = await graph.ainvoke(initial_state)
 
-    # ── Save outputs ───────────────────────────────────────────────────────────
-    out_root = output_dir or (settings.output_path / concept.slug())
-    out_root.mkdir(parents=True, exist_ok=True)
+    # ── Console summary (save_outputs node wrote the files) ────────────────────
+    if final_state.get("is_complete"):
+        fact_sheet_path = out_root / "fact_sheet.json"
+        guide_html = final_state.get("guide_html", "")
+        linkedin_post = final_state.get("linkedin_post", "")
+        reel_script = final_state.get("reel_script", "")
+        code_evidence = final_state.get("code_evidence", [])
 
-    # Fact sheet — research evidence (always written)
-    fact_sheet_path = out_root / "fact_sheet.json"
-    fact_sheet = {
-        "concept_name": final_state.get("concept_name"),
-        "category": final_state.get("category"),
-        "why_it_matters": final_state.get("why_it_matters"),
-        "repo_path": final_state.get("repo_path"),
-        "teaching_plan": final_state.get("teaching_plan", {}),
-        "code_evidence": final_state.get("code_evidence", []),
-        "implementation_notes": final_state.get("implementation_notes", {}),
-        "doc_context": final_state.get("doc_context", {}),
-        "generalized_pattern": final_state.get("generalized_pattern", {}),
-    }
-    fact_sheet_path.write_text(json.dumps(fact_sheet, indent=2, ensure_ascii=False))
+        console.print(f"\n[green]✓[/] Fact sheet → [bold]{fact_sheet_path}[/]")
+        console.print(f"  Code evidence: {len(code_evidence)} snippets")
+        if guide_html:
+            console.print(f"[green]✓[/] Guide       → [bold]{out_root / 'guide.html'}[/]")
+        if linkedin_post:
+            console.print(f"[green]✓[/] LinkedIn    → [bold]{out_root / 'linkedin.md'}[/]")
+        if reel_script:
+            console.print(f"[green]✓[/] Reel script → [bold]{out_root / 'reel_script.md'}[/]")
 
-    # guide.html — Phase 2 deliverable (written if writer produced output)
-    guide_html = final_state.get("guide_html", "")
-    guide_path = None
-    if guide_html:
-        guide_path = out_root / "guide.html"
-        guide_path.write_text(guide_html, encoding="utf-8")
-
-    # linkedin.md and reel_script.md — written if produced
-    linkedin_post = final_state.get("linkedin_post", "")
-    if linkedin_post:
-        (out_root / "linkedin.md").write_text(linkedin_post, encoding="utf-8")
-
-    reel_script = final_state.get("reel_script", "")
-    if reel_script:
-        (out_root / "reel_script.md").write_text(reel_script, encoding="utf-8")
-
-    # ── Console summary ────────────────────────────────────────────────────────
-    console.print(f"\n[green]✓[/] Fact sheet → [bold]{fact_sheet_path}[/]")
-    console.print(f"  Code evidence: {len(fact_sheet['code_evidence'])} snippets")
-    if guide_path:
-        console.print(f"[green]✓[/] Guide       → [bold]{guide_path}[/]")
-    if linkedin_post:
-        console.print(f"[green]✓[/] LinkedIn    → [bold]{out_root / 'linkedin.md'}[/]")
-    if reel_script:
-        console.print(f"[green]✓[/] Reel script → [bold]{out_root / 'reel_script.md'}[/]")
+        review_result = final_state.get("review_result", {})
+        if review_result:
+            accurate = review_result.get("is_accurate", True)
+            confidence = review_result.get("confidence", "?")
+            status = "[green]accurate[/]" if accurate else "[yellow]corrections applied[/]"
+            console.print(f"  Review: {status} (confidence: {confidence})")
+    else:
+        console.print("[yellow]Warning:[/] pipeline did not complete cleanly")
 
     return final_state
+
+
+async def _run_interactive(graph, initial_state: dict) -> dict:
+    """
+    Run the graph in interactive mode, pausing before save_outputs for human review.
+    """
+    import uuid
+
+    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+
+    console.print("\n[dim]Running pipeline (interactive mode — will pause before saving)...[/]\n")
+
+    # Run until the interrupt fires (before save_outputs)
+    await graph.ainvoke(initial_state, config)
+
+    # Check if we're paused at the interrupt
+    state_snapshot = graph.get_state(config)
+    if not state_snapshot.next:
+        # No interrupt — graph ran to completion (shouldn't happen with interrupt_before)
+        return state_snapshot.values
+
+    guide_html = state_snapshot.values.get("guide_html", "")
+    review_result = state_snapshot.values.get("review_result", {})
+    editor_result = state_snapshot.values.get("editor_result", {})
+
+    console.print("\n" + "─" * 60)
+    console.print("[bold]Human Review[/]\n")
+    console.print(f"[dim]Guide length:[/] {len(guide_html):,} chars")
+
+    accurate = review_result.get("is_accurate", True)
+    confidence = review_result.get("confidence", "?")
+    console.print(
+        f"[dim]Tech review:[/] {'[green]accurate[/]' if accurate else '[yellow]inaccuracies corrected[/]'} "
+        f"(confidence: {confidence})"
+    )
+
+    changes = editor_result.get("changes_made", [])
+    if changes:
+        console.print(f"[dim]Editor changes:[/]")
+        for change in changes:
+            console.print(f"  • {change}")
+
+    console.print("\nOptions: [bold]approve[/] | [bold]skip[/] (save anyway) | [bold]abort[/] (discard)")
+    decision = input("Decision: ").strip().lower()
+
+    if decision == "abort":
+        console.print("[yellow]Aborted — no files written.[/]")
+        return state_snapshot.values
+
+    # Both "approve" and "skip" continue to save_outputs
+    final_result = await graph.ainvoke(None, config)
+    return final_result
 
 
 async def run_batch(
@@ -241,6 +280,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--resume", action="store_true", help="Skip concepts with existing outputs")
     p.add_argument("--list", "-l", action="store_true", help="List all concepts in the backlog")
     p.add_argument("--output", "-o", metavar="PATH", help="Output directory for single concept")
+    p.add_argument(
+        "--interactive", "-i", action="store_true",
+        help="Pause before saving for human review/approval (single concept only)",
+    )
     p.add_argument("--log-level", default="INFO", help="Logging level (default: INFO)")
     return p
 
@@ -262,7 +305,7 @@ def cli() -> None:
 
     if args.concept:
         output = Path(args.output) if args.output else None
-        asyncio.run(run_single_concept(args.concept, repo_path, output))
+        asyncio.run(run_single_concept(args.concept, repo_path, output, interactive=args.interactive))
         return
 
     if args.batch:

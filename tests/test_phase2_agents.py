@@ -274,9 +274,11 @@ class TestDocAnalyzerNode:
             with patch("src.config.settings", _mock_settings()):
                 result = await doc_analyzer_node(base_state)
 
-        # These keys must be untouched
-        assert result["code_evidence"] == original_evidence
-        assert result["implementation_notes"] == original_notes
+        # doc_analyzer must not include keys owned by code_researcher.
+        # Since parallel branches now return ONLY their own keys (no **state spread),
+        # these keys must be absent from the result dict entirely.
+        assert "code_evidence" not in result
+        assert "implementation_notes" not in result
 
     @pytest.mark.asyncio
     async def test_handles_malformed_json_gracefully(self, base_state):

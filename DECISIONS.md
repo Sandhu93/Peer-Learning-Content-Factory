@@ -135,7 +135,7 @@ LLM hallucination is a genuine risk in a content-generation pipeline. A writer a
 ### Decision
 The research phase (topic_parser + code_researcher + doc_analyzer) runs before any writing. It produces a `fact_sheet.json` with verified code snippets, file paths, and doc context. The writer agent receives only content from this fact sheet — it is not permitted to add code examples or factual claims that aren't in the fact sheet.
 
-The `tech_reviewer` agent (Phase 4) independently verifies every factual claim in the generated guide against the actual codebase, providing a second line of defence.
+The `tech_reviewer` agent (Phase 3) independently verifies every factual claim in the generated guide against the actual codebase, providing a second line of defence.
 
 ### Consequences
 - **Positive:** Guides are grounded in the actual codebase. Function names, file paths, and code behaviour descriptions are accurate.
@@ -237,3 +237,82 @@ The full pipeline design includes a dedicated `diagram_generator` agent in Phase
 - **Positive:** No extra LLM call needed for diagram generation — the spec-to-SVG conversion is pure Python.
 - **Negative:** Diagram quality is limited to what `svg_builder`'s node/edge spec can express. Complex architecture diagrams with curved arrows or layered layouts aren't supported yet.
 - **Watch:** When Phase 4 adds `diagram_generator`, it should replace the inline rendering in `writer.py` rather than duplicate it.
+
+## ADR-010 — Parallel LangGraph nodes must return only their own keys (no `**state` spread)
+
+### Date
+2026-03-27
+
+### Status
+Accepted
+
+### Context
+LangGraph uses `LastValue` channels for state keys by default. When two parallel branches both execute in the same graph step, LangGraph collects their return dicts and merges them via `apply_writes`. If both dicts contain the same key — even with the same value — `LastValue.update()` raises `InvalidUpdateError: Can receive only one value per step`.
+
+`code_researcher` and `doc_analyzer` both previously returned `{**state, "their_key": value}`. This passed every key in `PipelineState` through both nodes. At fan-in, LangGraph saw two writes to `concept_name`, `category`, `repo_path`, etc., and crashed.
+
+### Decision
+Any node that runs as part of a parallel branch (fan-out → fan-in) **must return only the keys it is responsible for writing**. It must not include `**state` or any key owned by a sibling branch.
+
+Sequential nodes (those that run alone in their step) may return `{**state, "new_key": value}`, but returning only owned keys is safer and is the preferred pattern going forward.
+
+### Rule (enforceable in tests)
+> A parallel node's return dict must be disjoint from all sibling nodes' return dicts and must not contain any key from `PipelineState` that the node does not write as part of its defined responsibility.
+
+### Consequences
+- **Positive:** Eliminates the entire class of `InvalidUpdateError` fan-in crashes.
+- **Positive:** Makes each node's output contract explicit and auditable.
+- **Negative:** Node return values no longer represent the full state snapshot — callers (tests) must merge with `{**base_state, **result}` to simulate what LangGraph produces after fan-in.
+- **Watch:** Any new parallel branch added in future phases must follow this rule. The `TestParallelBranchIsolation` test class is the living enforcement of this contract.
+
+---
+
+## ADR-011 — Editor uses patch-based diffs, not full HTML re-generation
+
+**Date:** 2026-03-27
+**Status:** Accepted
+
+### Context
+The `editor` agent's job is to apply corrections from `tech_reviewer` and polish prose. The guide HTML is 40–50k characters. Two approaches were considered:
+
+| Option | Assessment |
+|---|---|
+| **Editor outputs full HTML** | Simple prompt; but Claude rewriting 40k chars of HTML is expensive, slow, and risks structural drift — broken tags, altered CSS classes, missing placeholders |
+| **Editor outputs {original_text → replacement_text} patches** | Cheaper, faster, structurally safe; only the specific passages change |
+
+### Decision
+The editor's LLM call returns a JSON object with a `changes` array: each item is `{original: "...", replacement: "..."}`. The node applies these as verbatim string replacements to the existing `guide_html` in Python. If an `original` string is not found in the HTML (e.g., the LLM hallucinated the passage), the change is skipped and a warning is logged — the guide is not corrupted.
+
+### Consequences
+- **Positive:** HTML structure is preserved. CSS classes, template slots, and SVG elements are untouched.
+- **Positive:** Token cost is ~10x lower than re-generating full HTML.
+- **Negative:** The LLM must quote passages verbatim from the HTML — any paraphrase or reconstruction causes the replacement to silently fail. Prompt emphasises "must be a verbatim substring".
+- **Watch:** If a `changes` entry quotes a passage that appears multiple times in the HTML, only the first occurrence is replaced (`str.replace(..., 1)`). The editor prompt limits changes to passages long enough (≥30 chars) to be unique.
+
+---
+
+## ADR-012 — File writing moved from `main.py` into a `save_outputs` graph node
+
+**Date:** 2026-03-27
+**Status:** Accepted
+
+### Context
+In Phase 2, `run_single_concept()` in `main.py` wrote all output files inline after `graph.ainvoke()` returned. This worked, but it had two problems:
+1. The human-in-the-loop interrupt (Phase 3) should pause *before* files are written — not after. If files were written before the human approved, the pause would be pointless.
+2. File writing outside the graph meant the graph's output could not be cleanly tested end-to-end (the final artefacts were not part of the graph's observable state).
+
+### Decision
+A `save_outputs` node is added as the final graph node. It reads `output_path` from state (set in `initial_state` before the run), writes all files, and sets `is_complete: True`. `main.py` only prints a summary after the graph completes — it no longer contains file I/O.
+
+`output_path` is added to `initial_state` in `run_single_concept()` before `ainvoke()` is called:
+```python
+"output_path": str(out_root)
+```
+
+In `--interactive` mode, `interrupt_before=["save_outputs"]` causes LangGraph to pause before the node runs, allowing human review before any files land on disk.
+
+### Consequences
+- **Positive:** Human-in-the-loop interrupt fires before files are written. Aborting leaves no partial output.
+- **Positive:** The complete pipeline — including file writing — is exercised by a single graph run.
+- **Negative:** `output_path` must be in `initial_state`. A caller that forgets to set it will cause `save_outputs` to log an error and set `is_complete: False` rather than crashing the graph.
+- **Watch:** `save_outputs` uses `encoding="utf-8"` on every `write_text()` call (see BUG-006, BUG-008 pattern).

@@ -227,7 +227,7 @@ Both parallel branch agents now return **only the keys they produce**:
 Sequential nodes (topic_parser, concept_mapper, pedagogy_planner, writer) are unaffected — they can still spread `**state` since they run alone in their step.
 
 ### Confirmation
-Re-ran end-to-end; fan-in merge succeeded, pipeline continued to concept_mapper.
+All 29 tests in `tests/test_phase2_agents.py` pass. The parallel isolation test `TestParallelBranchIsolation::test_code_researcher_and_doc_analyzer_write_disjoint_keys` explicitly verifies the fan-in merge succeeds and both output keys survive. The isolation guard test `test_does_not_write_code_evidence_or_implementation_notes` was updated to assert the keys are *absent* from the return dict (not just unchanged via pass-through), which more precisely captures the rule.
 
 ---
 
@@ -344,3 +344,42 @@ python -m src.main --list
 python -m src.main --concept "Circuit breaker" --repo D:/some/other/repo
 # Should search D:/some/other/repo, not settings.repo_path
 ```
+
+---
+
+## BUG-008 — `fact_sheet.json` write failed with `UnicodeEncodeError` on Windows (cp1252)
+
+**Date:** 2026-03-27
+**Severity:** High — crashed every run after the writer succeeded, discarding all output
+**Phase:** Phase 2 — first complete end-to-end run (BUG-007 fix revealed this)
+
+### What broke
+`main.py` line 127 wrote `fact_sheet.json` with `pathlib.Path.write_text()` without specifying an encoding. On Windows, `write_text()` defaults to the system locale encoding (cp1252). The LLM-generated content contained Unicode characters outside cp1252 (e.g. `→` U+2192), causing:
+
+```
+UnicodeEncodeError: 'charmap' codec can't encode character '\u2192' in position 5611: character maps to <undefined>
+```
+
+All other `write_text()` calls in the same function already had `encoding="utf-8"` — this one was missed.
+
+### How we identified it
+BUG-007 fix allowed the pipeline to run fully for the first time. The crash appeared immediately after the writer logged "guide generated (46367 chars)".
+
+### What it affected
+`fact_sheet.json` was never written. `guide.html` and other outputs were also lost because the exception aborted `run_single_concept()` before any files were saved.
+
+### Fix
+Added `encoding="utf-8"` to the missing call in `src/main.py`:
+```python
+# Before
+fact_sheet_path.write_text(json.dumps(fact_sheet, indent=2, ensure_ascii=False))
+
+# After
+fact_sheet_path.write_text(json.dumps(fact_sheet, indent=2, ensure_ascii=False), encoding="utf-8")
+```
+
+### Root cause pattern
+Same as BUG-006: Windows `write_text()` / `open()` default to cp1252. Any string containing non-ASCII characters (arrows, em-dashes, quotes, etc. — common in LLM output) will crash. All file writes in this project must specify `encoding="utf-8"` explicitly.
+
+### Confirmation
+Re-ran pipeline; `fact_sheet.json` and `guide.html` written successfully.
