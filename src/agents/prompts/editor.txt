@@ -40,8 +40,10 @@ Respond with a single JSON object. No markdown fences, no commentary — just th
 
 ## Rules
 
+- The guide HTML you receive may be truncated. Only reference passages you can directly see in the input — never reconstruct or assume content beyond what was provided.
 - Each `original` must be a verbatim substring of the guide HTML — these will be applied as exact string replacements. Do not paraphrase or reconstruct from memory.
 - Keep `original` snippets long enough to be unique within the document (at least 30 characters of context).
 - If no corrections were provided and the prose is already clean, return `{"changes": [], "changes_made": ["No changes needed — guide is accurate and well-written."]}`.
 - Aim for 1-8 changes total. Do not over-edit. A guide that is 90% good should not be rewritten.
 - Never produce an empty `changes_made` list — always include at least one entry describing the overall outcome.
+- If a correction from the tech reviewer appears to be wrong (i.e., the guide already says the correct thing, or the correction would introduce an inaccuracy), skip it. Your job is to improve the guide, not to blindly apply every instruction.

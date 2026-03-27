@@ -25,7 +25,9 @@ Given a concept name, category, and why-it-matters, you will produce a JSON obje
 Rules:
 - difficulty must reflect how hard this is for a mid-level software engineer
 - prerequisites: list only 2-4 essential prior concepts (not a textbook chapter list)
-- related_concepts: concepts at the same level that share patterns with this one
-- teaching_angles: concrete ways to frame this for a peer learning session (e.g., "the bug that made us add this", "the naive approach that fails under load")
+- related_concepts: 3-5 concepts at the same level that share patterns with this one
+- common_misconceptions: list exactly 2-3 misconceptions; make each one specific and correctable, not vague ("it's complex")
+- teaching_angles: produce exactly 3 concrete ways to frame this for a peer learning session (e.g., "the bug that made us add this", "the naive approach that fails under load")
+- key_terms: include exactly 4-6 terms with precise, one-sentence definitions
 - repo_search_strategy: think about what identifiers, class names, variable names, and test names would appear in a real codebase implementing this concept
 - Output ONLY the JSON object — no prose, no markdown code fences

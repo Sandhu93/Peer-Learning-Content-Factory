@@ -81,6 +81,11 @@ Respond with a single JSON object. No markdown fences, no commentary — just th
 - Edge labels should be short (under 25 characters). Use `dashed: true` for conditional or timeout-based transitions.
 - Color semantics: green = healthy/success, red = failed/error, amber = degraded/warning, blue = service/component, coral = infrastructure, purple = abstract concept, gray = neutral/inactive.
 
+## Rules for bug_story_source
+
+- Set to `"doc_context"` if `doc_context.bug_stories` contains at least one story directly related to this concept. The writer will use it verbatim.
+- Set to `"synthesized"` if no relevant real bug story exists. The writer will construct a teaching scenario and label it clearly as illustrative.
+
 ## Rules for discussion_prompts
 - Produce exactly 4 prompts.
 - Each should be answerable in 5-10 minutes of discussion.

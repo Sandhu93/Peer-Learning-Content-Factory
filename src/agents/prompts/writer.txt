@@ -35,7 +35,7 @@ HTML list items use `<li>` tags. Code snippets are raw strings (no HTML — the 
   "naive_failure": "1-2 sentences. The specific way the naive code fails under the failure condition described in problem_elaboration.",
 
   "prod_description": "2-3 sentences describing the production solution in prose.",
-  "prod_code": "10-20 lines from the actual codebase (from code_evidence). Prefer the most illustrative snippet. Include the file path as a comment on the first line.",
+  "prod_code": "10-40 lines from the actual codebase (from code_evidence). Prefer the most illustrative snippet. Include the file path as a comment on the first line.",
   "prod_rationale": "1-2 sentences. Why this specific implementation works where the naive approach failed.",
 
   "how_it_works_intro": "1 paragraph. High-level walkthrough of the mechanism. Should set up the diagram that follows.",
@@ -83,7 +83,8 @@ HTML list items use `<li>` tags. Code snippets are raw strings (no HTML — the 
 
 ## Rules
 - `prod_code` and `code_snippet_1/2` must use actual content from `code_evidence`. Quote verbatim.
-- If a bug story exists in `doc_context.bug_stories`, use it. If not, construct a plausible educational scenario based on the concept's failure mode — clearly written as a teaching scenario, not a fabricated real incident.
+- If `code_evidence` contains only one strong snippet, use it for both `code_snippet_1` and `code_snippet_2` — focus `code_snippet_1_explanation` on the structure, `code_snippet_2_explanation` on the behaviour/logic.
+- If a bug story exists in `doc_context.bug_stories`, use it verbatim. If not, construct a plausible educational scenario based on the concept's failure mode — prefix `bug_title` with "Teaching scenario:" so the tech reviewer knows this is illustrative, not a real incident.
 - `naive_code` is illustrative — it can be constructed to show the anti-pattern, but it must be realistic code an engineer would actually write.
 - `linkedin_post` must be plain text (no HTML tags). Line breaks with `\n`.
 - `reel_scenes` should have exactly 6 scenes covering: hook (0-5s), problem (5-15s), naive (15-25s), solution (25-40s), key insight (40-50s), call to action (50-60s).

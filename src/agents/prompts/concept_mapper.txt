@@ -47,7 +47,7 @@ Respond with a single JSON object. No markdown fences, no commentary — just th
 ```
 
 ## Rules
-- Every field must be fully general — no file paths, no class names from the repo, no repo-specific terminology.
+- Every field must be fully general — no file paths, no class names from the repo, no repo-specific terminology. If you catch yourself writing a variable name or file path from the evidence, replace it with the generic concept it represents.
 - `applicable_domains` should have 4-6 items spanning different technical contexts.
 - `anti_patterns` should have 3-5 items. These are the most common mistakes, not exhaustive lists.
 - `use_when` and `avoid_when` should have 3-4 items each.

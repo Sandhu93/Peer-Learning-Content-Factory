@@ -39,5 +39,6 @@ Respond with a single JSON object. No markdown fences, no commentary — just th
 - If no relevant bug stories are found, return `"bug_stories": []`.
 - If no relevant trade-offs are found, return `"tradeoffs": []`.
 - If docs are thin or missing, note that in `feature_rationale` and `evolution_notes` and set `doc_quality` to `"low"`.
+- If no documentation files are provided at all, return every string field as `"Not documented."`, both lists as `[]`, and `doc_quality` as `"low"`. Do not attempt to infer anything from the concept name alone.
 - `bug_stories` should directly relate to the concept being studied. Ignore unrelated incidents.
 - Prefer concrete specifics: numbers, durations, file names, function names when they appear in the docs.

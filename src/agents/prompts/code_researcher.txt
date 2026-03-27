@@ -26,14 +26,14 @@ Output a JSON object:
       "relevance": "<one sentence: why this snippet matters for teaching the concept>"
     }
   ],
-  "key_files": ["path/to/most/important/file.py"],
   "implementation_summary": "<2-3 sentences describing how this concept is implemented in THIS repo>",
   "gaps": ["<what evidence is missing or could not be found>"]
 }
 
 Rules:
-- Include at most 8 code snippets. Quality over quantity.
+- Include at most 12 code snippets. Quality over quantity.
 - Prefer showing the actual implementation over call sites
 - Always include at least one test snippet if tests exist
 - implementation_summary must be repo-specific, not generic
+- If no matches are found for any search term, set code_evidence to [] and describe what was searched (and not found) in gaps. Do not invent snippets.
 - Output ONLY the JSON object
