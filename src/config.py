@@ -3,13 +3,24 @@ Application configuration — loaded once at startup from environment variables.
 
 Usage:
     from src.config import settings
-    print(settings.repo_path)
+    print(settings.repo_path)          # may be None if REPO_PATH not set
+    print(settings.effective_repo_path(override))  # resolves with fallback
+
+Design note — REPO_PATH is intentionally optional at startup:
+    The repo to analyse is a per-run input, not a global constant. It can come from:
+      1. REPO_PATH in .env       — default for CLI usage
+      2. --repo CLI flag         — overrides .env for a single run
+      3. API request body        — when a frontend is added
+
+    This means config.py never crashes on a missing REPO_PATH.
+    Validation happens at the point of use (run_single_concept), where the
+    resolved path is checked for existence before the graph starts.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
+from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic import field_validator
@@ -32,7 +43,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
 
     # ── Paths ─────────────────────────────────────────────────────────────────
-    repo_path: Path = Path(".")
+    # Optional — validated at runtime, not startup, so the app boots without it.
+    repo_path: Optional[Path] = None
     output_path: Path = _PROJECT_ROOT / "output" / "teaching_guides"
     concepts_file: Path = _PROJECT_ROOT / "peer_learning_concepts.md"
 
@@ -50,11 +62,11 @@ class Settings(BaseSettings):
 
     @field_validator("repo_path", mode="before")
     @classmethod
-    def validate_repo_path(cls, v: str | Path) -> Path:
-        p = Path(v)
-        if not p.exists():
-            raise ValueError(f"REPO_PATH does not exist: {p}")
-        return p
+    def coerce_repo_path(cls, v: str | Path | None) -> Path | None:
+        """Convert string to Path but do NOT check existence here."""
+        if v is None or v == "":
+            return None
+        return Path(v)
 
     @field_validator("output_path", mode="before")
     @classmethod
@@ -62,6 +74,29 @@ class Settings(BaseSettings):
         p = Path(v)
         p.mkdir(parents=True, exist_ok=True)
         return p
+
+    def effective_repo_path(self, override: Path | str | None = None) -> Path:
+        """
+        Resolve the repo path for a specific run.
+
+        Priority: override arg > REPO_PATH in .env
+
+        Raises ValueError if neither is set or the resolved path doesn't exist.
+        This is called once per run, not at startup.
+        """
+        raw = Path(override) if override else self.repo_path
+        if raw is None:
+            raise ValueError(
+                "No repository path provided.\n"
+                "  Option 1: Set REPO_PATH=/path/to/repo in your .env file\n"
+                "  Option 2: Pass --repo /path/to/repo on the command line\n"
+                "  Option 3: (future) send repo_path in the API request body"
+            )
+        if not raw.exists():
+            raise ValueError(f"Repository path does not exist: {raw}")
+        if not raw.is_dir():
+            raise ValueError(f"Repository path is not a directory: {raw}")
+        return raw
 
     @property
     def anthropic_configured(self) -> bool:
@@ -73,7 +108,7 @@ class Settings(BaseSettings):
 
 
 def _load_settings() -> Settings:
-    """Load and validate settings, raising clear errors on misconfiguration."""
+    """Load and validate settings. Only ANTHROPIC_API_KEY is required at startup."""
     try:
         s = Settings()
     except Exception as exc:

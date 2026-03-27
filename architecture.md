@@ -76,7 +76,8 @@ PipelineState
 │   ├── concept_name: str
 │   ├── category: str
 │   ├── why_it_matters: str
-│   └── repo_anchors: list[str]          # search terms from backlog
+│   ├── repo_anchors: list[str]          # search terms from backlog
+│   └── repo_path: str                   # resolved once; travels with run
 │
 ├── Research outputs (set by Phase 1/2 agents)
 │   ├── code_evidence: list[CodeSnippet] # matched code from repo
@@ -228,9 +229,22 @@ State is persisted to `fact_sheet.json` after Phase 1 completes. If the pipeline
 All runtime configuration is loaded from `.env` via Pydantic Settings (`src/config.py`). The `Settings` class validates on import — a misconfigured key raises a clear error at startup, not deep inside an API call.
 
 Critical validations:
-- `REPO_PATH` must exist on disk (validated at import time)
 - `ANTHROPIC_API_KEY` must be non-empty (checked in `_load_settings()`)
 - `OUTPUT_PATH` is created automatically if it doesn't exist
+
+### Repo path resolution
+
+`REPO_PATH` is **not** validated at import time. It is a per-run input that can come from three sources, checked in priority order:
+
+```
+1. --repo CLI flag           (overrides everything)
+2. REPO_PATH in .env         (default for CLI users)
+3. (future) API request body (when a frontend is added)
+```
+
+Resolution happens once in `src/main.py` via `settings.effective_repo_path(override)`, which raises a `ValueError` with a clear message if none of the three sources is configured. The resolved path is placed in `PipelineState["repo_path"]` and travels with the run — agents read it from state, not from global config.
+
+This design means two concurrent API requests can target different repos without any global state mutation. See ADR-007 and Concept 011 (`new_concepts.md`) for the full reasoning.
 
 ---
 

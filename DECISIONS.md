@@ -161,3 +161,37 @@ After each phase completes, the state is serialised to `fact_sheet.json` (and la
 - **Positive:** Resuming is cheap — no re-running of expensive LLM research for completed concepts.
 - **Negative:** JSON serialisation of `PipelineState` requires that all values are JSON-serialisable. Pydantic models must be converted with `.model_dump()` before storage.
 - **Watch:** If the state schema changes between runs (e.g., a new field is added), existing JSON files may be missing that field. Use `.get()` with defaults when reading persisted state.
+
+---
+
+## ADR-007 — `repo_path` is a per-run `PipelineState` field, not a global setting
+
+**Date:** 2026-03-27
+**Status:** Accepted
+
+### Context
+Initially `REPO_PATH` was stored in `Settings` with a default of `Path(".")`. This caused BUG-005: when the env var was not set, agents silently searched the content factory's own source tree instead of the target codebase. Additionally, the existence check ran at import time, crashing the entire app on environments where the path didn't yet exist — even for commands like `--list` that don't need a repo at all.
+
+The deeper issue: `repo_path` is a **run input** — it can legitimately differ between invocations. A CLI user might pass `--repo` to override. A future web frontend will receive a different path per user request. Global singletons cannot represent per-request variation.
+
+### Options considered
+
+| Option | Assessment |
+|---|---|
+| **Keep in `Settings`, add `--repo` to mutate it** | Mutating a module-level singleton is an anti-pattern; breaks concurrent requests |
+| **Validate at import time with a required env var** | Forces every environment to have `REPO_PATH`, even tests and `--list` which don't need it |
+| **Optional in `Settings`, resolved at run time, stored in state** | Clean separation: config holds the default, state holds the resolved value for this run |
+
+### Decision
+`repo_path` is `Optional[Path] = None` in `Settings`. A new `effective_repo_path(override)` method resolves the value at the point of use — checking the CLI override first, then the `.env` default, then raising a `ValueError` with a three-option error message if neither is configured.
+
+The resolved path is placed in `PipelineState["repo_path"]` as a `str` at the start of each run. Every agent that needs the path reads it from state, not from `settings`. This means:
+- Two concurrent API requests can target different repos without race conditions.
+- `--list` and other commands that don't invoke the graph never trigger the path check.
+- Adding a frontend only requires placing `request.body.repo_path` in the initial state — no other code changes.
+
+### Consequences
+- **Positive:** `--list`, `--batch --dry-run`, and test runs that don't need a repo never crash due to a missing path.
+- **Positive:** The pattern generalises cleanly to any per-run input (language filter, output dir override, etc.).
+- **Negative:** Agents must remember to read from `state["repo_path"]` rather than `settings.repo_path`. A new agent that forgets this will silently use the wrong path if `REPO_PATH` is not set. Mitigated by the fallback `state.get("repo_path") or settings.repo_path` guard in `code_researcher`.
+- **Watch:** When the frontend is added, validate `repo_path` from the request body the same way as `--repo` — through `effective_repo_path()` — before passing it to the graph. Do not bypass the validation step.

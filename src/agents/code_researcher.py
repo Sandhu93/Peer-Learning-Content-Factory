@@ -17,6 +17,7 @@ import json
 import logging
 from pathlib import Path
 
+
 from src.state import PipelineState
 from src.tools.code_search import (
     find_tests,
@@ -45,23 +46,26 @@ async def code_researcher_node(state: PipelineState) -> PipelineState:
     search_strategy = teaching_plan.get("repo_search_strategy", {})
     repo_anchors = state.get("repo_anchors", [])
 
+    # repo_path travels in state; fall back to settings for backwards compat
+    repo_path = Path(state["repo_path"]) if state.get("repo_path") else settings.repo_path
+
     primary_terms = search_strategy.get("primary_terms", repo_anchors)
     secondary_terms = search_strategy.get("secondary_terms", [])
 
-    logger.info("code_researcher: searching for '%s'", concept_name)
+    logger.info("code_researcher: searching for '%s' in %s", concept_name, repo_path)
 
     # ── Step 1: Gather raw search results ────────────────────────────────────
     raw_results: list[dict] = []
 
     for term in primary_terms[:5]:  # cap to avoid token explosion
-        hits = search_term(term, settings.repo_path)
+        hits = search_term(term, repo_path)
         raw_results.extend(hits[:5])
 
     for term in secondary_terms[:3]:
-        hits = search_term(term, settings.repo_path)
+        hits = search_term(term, repo_path)
         raw_results.extend(hits[:3])
 
-    test_hits = find_tests(concept_name, settings.repo_path)
+    test_hits = find_tests(concept_name, repo_path)
     raw_results.extend(test_hits[:5])
 
     # Deduplicate by (file, line_number)

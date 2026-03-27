@@ -197,3 +197,86 @@ pytest tests/test_markdown_parser.py
 # Final line: "28 passed in 0.64s"
 # Log file ends with: "Session finished — exit code 0 | collected 28 items"
 ```
+
+---
+
+## BUG-005 — `REPO_PATH` defaulted to the wrong directory; startup crash when path was invalid
+
+**Date:** 2026-03-27
+**Severity:** High — code_researcher searched the wrong codebase; startup crashed on environments without the path
+**Phase:** Phase 1 Foundation
+
+### What broke
+`src/config.py` originally defined:
+```python
+repo_path: Path = Path(".")   # defaulted to current working directory
+```
+Two problems followed from this:
+1. **Wrong directory searched.** When `REPO_PATH` was not set in `.env`, all agents silently searched the content factory project itself (the working directory) instead of the target codebase. The `code_researcher` returned "evidence" from the factory's own source files rather than from the repo being analysed.
+2. **Startup crash on missing path.** The `@field_validator` for `repo_path` checked that the path existed at import time. On a fresh environment where `REPO_PATH` pointed to a path that didn't yet exist, the entire application crashed on import with a `ValueError` — before any CLI argument could be parsed.
+
+### How we identified it
+Running the pipeline against the `nl2sql_agent` repo produced code evidence snippets from `src/agents/` and `src/tools/` — the content factory's own files. The `code_researcher` log showed:
+```
+code_researcher: searching for 'Circuit breaker' in D:/ProgramData/GenAI/Peer-Learning-Content-Factory
+```
+instead of the intended target repo.
+
+### Impact
+- Any run without a correctly configured `REPO_PATH` produced a fact sheet with evidence from the wrong codebase — silently, with no warning.
+- The app crashed at startup on environments where the configured path didn't exist, even for commands like `--list` that don't use the repo path at all.
+
+### Root cause
+Two design errors:
+1. The default value `Path(".")` made the setting appear optional, but it silently pointed to the wrong place.
+2. Existence validation at import time was too early — the path should only be validated at the moment it is used for a run, not when the module loads.
+
+### Fix
+Three coordinated changes:
+
+**`src/config.py`** — made `repo_path` explicitly optional with no default; moved existence check to a new `effective_repo_path()` method called only at run time:
+```python
+repo_path: Optional[Path] = None   # no default; None = "not set"
+
+def effective_repo_path(self, override: Path | str | None = None) -> Path:
+    raw = Path(override) if override else self.repo_path
+    if raw is None:
+        raise ValueError(
+            "No repository path provided.\n"
+            "  Option 1: Set REPO_PATH=/path/to/repo in your .env file\n"
+            "  Option 2: Pass --repo /path/to/repo on the command line\n"
+            "  Option 3: (future) send repo_path in the API request body"
+        )
+    if not raw.exists():
+        raise ValueError(f"Repository path does not exist: {raw}")
+    return raw
+```
+
+**`src/state.py`** — added `repo_path: str` to `PipelineState` so the resolved path travels with the run through every node, enabling a future frontend to pass a different path per request without touching global config.
+
+**`src/main.py`** — added `--repo/-r` CLI argument; `_resolve_repo()` helper calls `settings.effective_repo_path(override)` and places the resolved path in the initial state dict.
+
+**`src/agents/code_researcher.py`** — updated to read from state first:
+```python
+repo_path = Path(state["repo_path"]) if state.get("repo_path") else settings.repo_path
+```
+
+**`.env`** — set `REPO_PATH=D:/ProgramData/GenAI/nl2sql_agent` so CLI runs without needing `--repo`.
+
+**Files changed:** `src/config.py`, `src/state.py`, `src/main.py`, `src/agents/code_researcher.py`, `.env`
+
+### Validation
+```bash
+# Confirm correct repo is searched
+python -m src.main --concept "Circuit breaker" --dry-run
+# Panel shows: Repo: D:/ProgramData/GenAI/nl2sql_agent
+
+# Confirm --list works without REPO_PATH
+# (temporarily unset REPO_PATH in .env and run --list)
+python -m src.main --list
+# Should not crash; just prints concept table
+
+# Confirm --repo override works
+python -m src.main --concept "Circuit breaker" --repo D:/some/other/repo
+# Should search D:/some/other/repo, not settings.repo_path
+```

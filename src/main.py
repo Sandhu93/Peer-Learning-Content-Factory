@@ -2,11 +2,14 @@
 CLI entry point for the Peer Learning Content Factory.
 
 Usage:
-    # Single concept (Phase 1 — produces JSON fact sheet)
+    # Single concept — repo from .env
     python -m src.main --concept "Circuit breaker for provider failure"
 
+    # Single concept — repo passed explicitly (overrides .env)
+    python -m src.main --concept "Circuit breaker" --repo D:/path/to/your-repo
+
     # Process all concepts in batch
-    python -m src.main --batch
+    python -m src.main --batch --repo D:/path/to/your-repo
 
     # Process a specific category
     python -m src.main --category "Reliability, Failure Isolation, and Production Hardening"
@@ -16,6 +19,11 @@ Usage:
 
     # Show all concepts in the backlog
     python -m src.main --list
+
+Repo path resolution (priority order):
+    1. --repo flag on the command line
+    2. REPO_PATH in .env
+    Fails with a clear message if neither is provided.
 """
 
 from __future__ import annotations
@@ -44,7 +52,26 @@ def setup_logging(level: str = "INFO") -> None:
     )
 
 
-async def run_single_concept(concept_name: str, output_dir: Path | None = None) -> dict:
+def _resolve_repo(repo_override: str | None) -> Path:
+    """
+    Resolve the repo path for this run.
+
+    Checks (in order): --repo CLI arg → REPO_PATH in .env.
+    Raises SystemExit with a clear message if neither is set or path is invalid.
+    """
+    from src.config import settings
+    try:
+        return settings.effective_repo_path(repo_override)
+    except ValueError as exc:
+        console.print(f"\n[red]Error:[/] {exc}\n")
+        sys.exit(1)
+
+
+async def run_single_concept(
+    concept_name: str,
+    repo_path: Path,
+    output_dir: Path | None = None,
+) -> dict:
     """Run the full pipeline for a single concept. Returns the final state."""
     from src.config import settings
     from src.graph import build_graph
@@ -59,7 +86,8 @@ async def run_single_concept(concept_name: str, output_dir: Path | None = None) 
     console.print(Panel(
         f"[bold]{concept.concept_name}[/]\n"
         f"[dim]{concept.category}[/]\n\n"
-        f"{concept.why_it_matters}",
+        f"{concept.why_it_matters}\n\n"
+        f"[dim]Repo:[/] {repo_path}",
         title="Processing concept",
         border_style="blue",
     ))
@@ -71,6 +99,7 @@ async def run_single_concept(concept_name: str, output_dir: Path | None = None) 
         "category": concept.category,
         "why_it_matters": concept.why_it_matters,
         "repo_anchors": concept.repo_anchors,
+        "repo_path": str(repo_path),   # travels with the run; agents read from here
         "revision_count": 0,
         "is_complete": False,
         "errors": [],
@@ -87,6 +116,7 @@ async def run_single_concept(concept_name: str, output_dir: Path | None = None) 
         "concept_name": final_state.get("concept_name"),
         "category": final_state.get("category"),
         "why_it_matters": final_state.get("why_it_matters"),
+        "repo_path": final_state.get("repo_path"),
         "teaching_plan": final_state.get("teaching_plan", {}),
         "code_evidence": final_state.get("code_evidence", []),
         "doc_context": final_state.get("doc_context", {}),
@@ -94,17 +124,14 @@ async def run_single_concept(concept_name: str, output_dir: Path | None = None) 
     fact_sheet_path.write_text(json.dumps(fact_sheet, indent=2, ensure_ascii=False))
 
     console.print(f"\n[green]✓[/] Fact sheet written to [bold]{fact_sheet_path}[/]")
-    console.print(
-        f"  Code evidence: {len(fact_sheet['code_evidence'])} snippets found"
-    )
+    console.print(f"  Code evidence: {len(fact_sheet['code_evidence'])} snippets found")
 
-    # Also print to stdout so --concept works with shell pipes
     print(json.dumps(fact_sheet, indent=2, ensure_ascii=False))
-
     return final_state
 
 
 async def run_batch(
+    repo_path: Path,
     category: str | None = None,
     dry_run: bool = False,
     resume: bool = False,
@@ -121,7 +148,8 @@ async def run_batch(
         console.print("[yellow]No concepts matched the filter.[/]")
         return
 
-    console.print(f"\n[bold]Found {len(concepts)} concepts to process[/]\n")
+    console.print(f"\n[bold]Found {len(concepts)} concepts to process[/]")
+    console.print(f"[dim]Repo: {repo_path}[/]\n")
 
     table = Table(title="Concept Backlog", show_lines=True)
     table.add_column("#", style="dim", width=4)
@@ -148,9 +176,8 @@ async def run_batch(
             if out_path.exists():
                 console.print(f"[dim]Skipping (already done):[/] {concept.concept_name}")
                 continue
-
         try:
-            await run_single_concept(concept.concept_name)
+            await run_single_concept(concept.concept_name, repo_path)
         except Exception as exc:
             console.print(f"[red]Error processing {concept.concept_name!r}:[/] {exc}")
             logging.exception("Batch processing error")
@@ -181,6 +208,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--concept", "-c", metavar="NAME", help="Process a single concept by name")
     p.add_argument("--batch", "-b", action="store_true", help="Process all concepts")
     p.add_argument("--category", metavar="CAT", help="Filter batch to a specific category")
+    p.add_argument(
+        "--repo", "-r", metavar="PATH",
+        help="Path to the repo to analyse (overrides REPO_PATH in .env)",
+    )
     p.add_argument("--dry-run", action="store_true", help="List what would be processed, no API calls")
     p.add_argument("--resume", action="store_true", help="Skip concepts with existing outputs")
     p.add_argument("--list", "-l", action="store_true", help="List all concepts in the backlog")
@@ -200,13 +231,18 @@ def cli() -> None:
         list_concepts()
         return
 
+    # Resolve the repo path once — used by all run paths below
+    # (--list doesn't need a repo, so we resolve after that check)
+    repo_path = _resolve_repo(args.repo)
+
     if args.concept:
         output = Path(args.output) if args.output else None
-        asyncio.run(run_single_concept(args.concept, output))
+        asyncio.run(run_single_concept(args.concept, repo_path, output))
         return
 
     if args.batch:
         asyncio.run(run_batch(
+            repo_path=repo_path,
             category=args.category,
             dry_run=args.dry_run,
             resume=args.resume,

@@ -57,6 +57,11 @@ class PipelineState(TypedDict, total=False):
     why_it_matters: str
     repo_anchors: list[str]
 
+    # Repo to analyse — per-run, not global config.
+    # Sources (in priority order): --repo CLI flag, API request body, REPO_PATH in .env.
+    # Stored as str so it serialises cleanly to JSON (Path is not JSON-serialisable).
+    repo_path: str
+
     # ── Research outputs ───────────────────────────────────────────────────────
     code_evidence: list[dict]       # list of CodeSnippet.model_dump()
     doc_context: dict               # {feature_rationale, bug_stories[], tradeoffs[], evolution_notes}
