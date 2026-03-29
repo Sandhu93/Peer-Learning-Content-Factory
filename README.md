@@ -1,5 +1,4 @@
 # Peer Learning Content Factory
-## Author: Sandeep
 
 An agent orchestration system that transforms software engineering concepts into polished teaching materials — automatically.
 
